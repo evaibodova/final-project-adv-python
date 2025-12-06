@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from .bd import UserORM, FeedbackORM
 from weather_stylist.infra.ports import UserRepo, FeedbackRepo
-from weather_stylist.models import User, FeedbackRecord
+from ..models import User, FeedbackRecord
 
 
 class SqlAlchemyUserRepo(UserRepo):

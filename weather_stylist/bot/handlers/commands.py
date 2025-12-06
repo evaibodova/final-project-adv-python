@@ -1,4 +1,4 @@
-from aiogram import F, Router, html
+from aiogram import F, Router, html, Bot
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
@@ -11,6 +11,7 @@ from aiogram.fsm.state import StatesGroup, State
 from weather_stylist.models import User
 from weather_stylist.adapters.user_bd.bd import SessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from weather_stylist.infra.alerts_scheduler import check_user_weather_change
 
 
 from contextlib import contextmanager
@@ -349,3 +350,33 @@ async def handle_thermo_choice(message: Message) -> None:
         reply = "ок, без особых предпочтений 😌\nбуду советовать что-то среднее."
 
     await message.answer(reply, reply_markup=main_menu_keyboard())
+
+
+@command_router.message(Command("test_alert"))
+async def cmd_test_alert(message: Message, bot: Bot) -> None:
+    """
+    Ручной запуск проверки алерта для текущего пользователя.
+    """
+    session = SessionLocal()
+    try:
+        repo = SqlAlchemyUserRepo(session)
+        user = repo.get_user_by_tg_id(message.from_user.id)
+
+        if user is None:
+            await message.answer(
+                "я не нашла тебя в базе 😢\n"
+                "сначала сделай /start и задай город в настройках."
+            )
+            return
+
+        # дергаем нашу функцию проверки погоды для этого юзера
+        await check_user_weather_change(bot, user)
+
+        await message.answer(
+            "я проверила погоду на сегодня и завтра 🌦\n"
+            "если там есть сильные изменения, ты уже получил(а) отдельное сообщение 😉"
+        )
+
+    finally:
+        session.close()
+
