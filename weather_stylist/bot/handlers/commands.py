@@ -1,30 +1,26 @@
-from aiogram import F, Router, html, Bot
+import os
+import random
+
+from aiogram import F, Router, html
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    FSInputFile,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
-from weather_stylist.models import User
 from weather_stylist.adapters.user_bd.bd import SessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
-from weather_stylist.infra.alerts_scheduler import check_user_weather_change
-
+from weather_stylist.models import User
 
 from contextlib import contextmanager
 from sqlalchemy.orm import Session
 
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
-
-THERMO_PREFS: dict[int, str] = {}
-
-TEXT_COLD = "Я мерзляк"
-TEXT_HOT = "Мне всегда жарко"
-TEXT_NEUTRAL = "У меня нет предпочтений"
 
 
 @contextmanager
@@ -42,10 +38,14 @@ class CityStates(StatesGroup):
     changing_city = State()      # смена города
 
 
+class StyleStates(StatesGroup):
+    choosing_style = State()     # выбор стиля одежды
+
+
 command_router = Router()
 
 
-# главное меню
+# --- главное меню ---
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -58,17 +58,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
-
-def thermo_prefs_keyboard() -> ReplyKeyboardMarkup:
-    """кнопки выбора термопрофиля"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=TEXT_COLD)],
-            [KeyboardButton(text=TEXT_HOT)],
-            [KeyboardButton(text=TEXT_NEUTRAL)],
-        ],
-        resize_keyboard=True,
-    )
 
 # --- /start ---
 
@@ -97,7 +86,7 @@ async def cmd_help(message: Message) -> None:
     )
 
 
-#  Совет на сегодня
+# --- Совет на сегодня ---
 
 
 @command_router.message(Command("today"))
@@ -132,7 +121,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     else:
         summary += ", дождя не ожидается"
 
-    # тут будет engine
+    # очень простой совет по одежде — тут потом можно подставить ваш engine
     if forecast.max_temp < 0:
         outfit = "надень тёплые штаны, свитер, шарф и зимнюю куртку"
     elif forecast.max_temp < 8:
@@ -153,7 +142,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     await message.answer(summary + "\n\n" + outfit + footer)
 
 
-#  первый выбор города
+# --- первый выбор города  ---
 
 
 @command_router.message(CityStates.choosing_default)
@@ -167,12 +156,9 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         forecast = await get_forecast_for_city(raw_city)
     except Exception:
         await message.answer(
-            "я не нашла такой город 😢\n"
-            "проверь написание и попробуй снова.\n"
-            "если это очень маленький населённый пункт, "
-            "попробуй ближайший крупный город, для этого воспользуйся командой /change_city"
+            "не смогла найти такой город 😿\n"
+            "попробуй ещё раз, например: Омск или Prague."
         )
-        await state.clear()
         return
 
     user_tg_id = message.from_user.id
@@ -227,15 +213,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         + "\n\nесли захочешь сменить город, используй /change_city или кнопку «Сменить город»."
     )
 
-    # если для этого пользователя ещё не выбраны предпочтения
-    if user_tg_id not in THERMO_PREFS:
-        await message.answer(
-            "и ещё один вопросик: как ты обычно ощущаешь погоду? 🧊🥵\n"
-            "выбери вариант ниже:",
-            reply_markup=thermo_prefs_keyboard(),
-        )
-
-#  Сменить город
+# --- Сменить город ---
 
 
 @command_router.message(Command("change_city"))
@@ -262,9 +240,8 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
             "я не нашла такой город 😢\n"
             "проверь написание и попробуй снова.\n"
             "если это очень маленький населённый пункт, "
-            "попробуй ближайший крупный город, для этого воспользуйся командой /change_city"
+            "попробуй ближайший крупный город."
         )
-        await state.clear()
         return
 
     user_tg_id = message.from_user.id
@@ -308,75 +285,131 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     )
 
 
-# термопрофиль
+# --- Настройки ---
+
+
+
 @command_router.message(Command("settings"))
 @command_router.message(F.text == "Настройки")
 async def cmd_settings(message: Message) -> None:
-    user_id = message.from_user.id
-    current = THERMO_PREFS.get(user_id)
-
-    if current == "cold":
-        status = "сейчас у тебя профиль: «я мерзляк»."
-    elif current == "hot":
-        status = "сейчас у тебя профиль: «мне всегда жарко»."
-    elif current == "neutral":
-        status = "сейчас у тебя профиль: «у меня нет предпочтений»."
-    else:
-        status = "у тебя пока не выбраны термопредпочтения."
-
     await message.answer(
-        status
-        + "\n\nвыбери, как ты обычно ощущаешь погоду:",
-        reply_markup=thermo_prefs_keyboard(),
+        "здесь будут настройки термочувствительности, стиля, города и времени рассылки.\n"
+        "пока просто заглушка.",
     )
 
 
-# --- обработчик выбора термопрофиля ---
+# --- Функция для выбора фото стиля ---
 
 
-@command_router.message(F.text.in_([TEXT_COLD, TEXT_HOT, TEXT_NEUTRAL]))
-async def handle_thermo_choice(message: Message) -> None:
-    user_id = message.from_user.id
-    choice = message.text
+def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> list[str]:
+    """вернуть пути к нескольким случайным фоткам с образом нужного стиля под погоду"""
+    base_dir = os.path.dirname(__file__)
+    styles_root = os.path.join(base_dir, "styles")
 
-    if choice == TEXT_COLD:
-        THERMO_PREFS[user_id] = "cold"
-        reply = "запомнила: ты мерзляк 🧊\nбуду советовать чуть теплее."
-    elif choice == TEXT_HOT:
-        THERMO_PREFS[user_id] = "hot"
-        reply = "запомнила: тебе всегда жарко 🔥\nбуду советовать полегче."
+    style_folder_map = {
+        "casual": os.path.join(styles_root, "casual_style"),
+        "office": os.path.join(styles_root, "office_style"),
+        "sport": os.path.join(styles_root, "sport_style"),
+    }
+
+    style_folder = style_folder_map.get(style_key)
+    if style_folder is None:
+        return []
+
+    # выбор подходящей подпапки по температуре
+    if max_temp <= 5:
+        subfolder = "photos_winter_temp"
+    elif max_temp <= 20:
+        # папка для весна/осень
+        subfolder = "photos_aut_spr_temp"   # если у тебя папка называется photos_spring_temp — впиши это имя
     else:
-        THERMO_PREFS[user_id] = "neutral"
-        reply = "ок, без особых предпочтений 😌\nбуду советовать что-то среднее."
+        subfolder = "photos_summer_temp"
 
-    await message.answer(reply, reply_markup=main_menu_keyboard())
+    photos_dir = os.path.join(style_folder, subfolder)
 
-
-@command_router.message(Command("test_alert"))
-async def cmd_test_alert(message: Message, bot: Bot) -> None:
-    """
-    Ручной запуск проверки алерта для текущего пользователя.
-    """
-    session = SessionLocal()
     try:
-        repo = SqlAlchemyUserRepo(session)
-        user = repo.get_user_by_tg_id(message.from_user.id)
+        files = [
+            f
+            for f in os.listdir(photos_dir)
+            if not f.startswith(".") and os.path.isfile(os.path.join(photos_dir, f))
+        ]
+    except FileNotFoundError:
+        return []
 
-        if user is None:
-            await message.answer(
-                "я не нашла тебя в базе 😢\n"
-                "сначала сделай /start и задай город в настройках."
-            )
-            return
+    if not files:
+        return []
 
-        # дергаем нашу функцию проверки погоды для этого юзера
-        await check_user_weather_change(bot, user)
+    if len(files) <= count:
+        chosen = files
+    else:
+        chosen = random.sample(files, count)
 
+    return [os.path.join(photos_dir, filename) for filename in chosen]
+
+
+
+# --- Выбор стиля ---
+
+
+@command_router.message(StyleStates.choosing_style)
+async def process_style_choice(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip().lower()
+
+    style_map = {
+        "casual": "casual",
+        "кэжуал": "casual",
+        "повседневный": "casual",
+        "office": "office",
+        "офисный": "office",
+        "офис": "office",
+        "sport": "sport",
+        "спорт": "sport",
+        "спортивный": "sport",
+    }
+
+    style_key = style_map.get(text)
+    if style_key is None:
         await message.answer(
-            "я проверила погоду на сегодня и завтра 🌦\n"
-            "если там есть сильные изменения, ты уже получил(а) отдельное сообщение 😉"
+            "пожалуйста, выбери стиль с кнопок: Casual, Офисный или Спортивный 😊"
+        )
+        return
+
+    data_state = await state.get_data()
+    city = data_state.get("city")
+
+    user_tg_id = message.from_user.id
+    if city is None:
+        with user_repo_ctx() as user_repo:
+            user = user_repo.get_user_by_tg_id(user_tg_id)
+        city = user.city if user is not None else DEFAULT_CITY
+
+    forecast = await get_forecast_for_city(city)
+
+    photo_paths = get_style_photo_paths(style_key, forecast.max_temp, count=3)
+
+    caption = (
+        f"город: {forecast.city}\n"
+        f"максимальная температура сегодня: {round(forecast.max_temp)}°C\n"
+        f"выбранный стиль: {style_key.capitalize()}"
+    )
+
+    if not photo_paths:
+        await message.answer(
+            caption + "\n\nпока не нашла подходящих фото для этого стиля и температуры 🥲",
+            reply_markup=main_menu_keyboard(),
+        )
+    else:
+        # первую фотку шлём с подписью и клавиатурой
+        first = FSInputFile(photo_paths[0])
+        await message.answer_photo(
+            first,
+            caption=caption,
+            reply_markup=main_menu_keyboard(),
         )
 
-    finally:
-        session.close()
+        # остальные две — просто картинками
+        for path in photo_paths[1:]:
+            await message.answer_photo(FSInputFile(path))
+
+    await state.clear()
 
