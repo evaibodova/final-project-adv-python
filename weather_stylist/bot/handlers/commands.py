@@ -37,10 +37,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Совет на сегодня")],
-            [KeyboardButton(text="Сменить город")],
+            [KeyboardButton(text="Изменить город")]
             [KeyboardButton(text="Настройки")],
-            [KeyboardButton(text="Изменить район")],
-            [KeyboardButton(text="Изменить стиль")],
         ],
         resize_keyboard=True,
     )
@@ -53,7 +51,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 async def cmd_start(message: Message) -> None:
     await message.answer(
         f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
-        "я бот-стилист по погоде: подсказываю, что надеть на весь день 🌦🧥",
+        "я бот-стилист по погоде: подсказываю, что надеть на весь день 🌦🧥. Нажми /help чтобы увидеть, что я могу)",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -69,8 +67,6 @@ async def cmd_help(message: Message) -> None:
         "/today – совет на сегодня\n"
         "/change_city – сменить город\n"
         "/settings – настройки профиля\n"
-        "/change_area – изменить район\n"
-        "/change_style – изменить стиль одежды\n\n"
         "или пользуйся кнопками внизу 👍",
     )
 
@@ -93,7 +89,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         await state.set_state(CityStates.choosing_default)
         return
 
-    # город уже известен 
+    # город уже известен
     forecast = await get_forecast_for_city(city)
 
     summary = (
@@ -192,8 +188,10 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
         forecast = await get_forecast_for_city(raw_city)
     except Exception:
         await message.answer(
-            "не нашла такой город 🤔\n"
-            "попробуй ещё раз, проверь раскладку и орфографию."
+            "я не нашла такой город 😢\n"
+            "проверь написание и попробуй снова.\n"
+            "если это очень маленький населённый пункт, "
+            "попробуй ближайший крупный город."
         )
         return
 
@@ -216,5 +214,3 @@ async def cmd_settings(message: Message) -> None:
         "здесь будут настройки термочувствительности, стиля, города и времени рассылки.\n"
         "пока просто заглушка.",
     )
-
-
