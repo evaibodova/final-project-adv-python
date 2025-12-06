@@ -320,8 +320,7 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
     if max_temp <= 5:
         subfolder = "photos_winter_temp"
     elif max_temp <= 20:
-        # папка для весна/осень
-        subfolder = "photos_aut_spr_temp"   # если у тебя папка называется photos_spring_temp — впиши это имя
+        subfolder = "photos_aut_spr_temp"
     else:
         subfolder = "photos_summer_temp"
 
@@ -399,7 +398,7 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
             reply_markup=main_menu_keyboard(),
         )
     else:
-        # первую фотку шлём с подписью и клавиатурой
+        # первую фотку с подписью
         first = FSInputFile(photo_paths[0])
         await message.answer_photo(
             first,
@@ -407,7 +406,7 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
             reply_markup=main_menu_keyboard(),
         )
 
-        # остальные две — просто картинками
+        # остальные две просто картинками
         for path in photo_paths[1:]:
             await message.answer_photo(FSInputFile(path))
 
