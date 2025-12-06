@@ -1,4 +1,3 @@
-from typing import Optional, List
 from datetime import datetime
 
 from sqlalchemy import (
@@ -14,7 +13,6 @@ from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
-    relationship,
     sessionmaker
 )
 
