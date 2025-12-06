@@ -1,5 +1,3 @@
-# weather_stylist/bot/handlers/text_commands.py
-
 from aiogram import Router, F
 from aiogram.types import Message
 
