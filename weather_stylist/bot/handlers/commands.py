@@ -148,9 +148,12 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         forecast = await get_forecast_for_city(raw_city)
     except Exception:
         await message.answer(
-            "не смогла найти такой город 😿\n"
-            "попробуй ещё раз, например: Омск или Prague."
+            "я не нашла такой город 😢\n"
+            "проверь написание и попробуй снова.\n"
+            "если это очень маленький населённый пункт, "
+            "попробуй ближайший крупный город, для этого воспользуйся командой /change_city"
         )
+        await state.clear()
         return
 
     user_tg_id = message.from_user.id
@@ -232,8 +235,9 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
             "я не нашла такой город 😢\n"
             "проверь написание и попробуй снова.\n"
             "если это очень маленький населённый пункт, "
-            "попробуй ближайший крупный город."
+            "попробуй ближайший крупный город, для этого воспользуйся командой /change_city"
         )
+        await state.clear()
         return
 
     user_tg_id = message.from_user.id
