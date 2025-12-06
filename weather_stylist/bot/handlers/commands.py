@@ -5,19 +5,39 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
 )
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
+
+_user_default_cities: dict[int, str] = {}
+
+
+def get_saved_city(user_id: int) -> str | None:
+    return _user_default_cities.get(user_id)
+
+
+def save_city(user_id: int, city: str) -> None:
+    _user_default_cities[user_id] = city
+
+
+class CityStates(StatesGroup):
+    choosing_default = State()   # первый выбор города
+    changing_city = State()      # смена города
+
 
 command_router = Router()
 
 
-# --- вспомогательная функция: главное меню ---
+# --- главное меню ---
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Совет на сегодня")],
+            [KeyboardButton(text="Сменить город")],
             [KeyboardButton(text="Настройки")],
             [KeyboardButton(text="Изменить район")],
             [KeyboardButton(text="Изменить стиль")],
@@ -47,6 +67,7 @@ async def cmd_help(message: Message) -> None:
         "я пока в режиме разработки.\n\n"
         "доступные команды:\n"
         "/today – совет на сегодня\n"
+        "/change_city – сменить город\n"
         "/settings – настройки профиля\n"
         "/change_area – изменить район\n"
         "/change_style – изменить стиль одежды\n\n"
@@ -59,9 +80,21 @@ async def cmd_help(message: Message) -> None:
 
 @command_router.message(Command("today"))
 @command_router.message(F.text == "Совет на сегодня")
-async def cmd_today(message: Message) -> None:
-    # пока берём город по умолчанию, потом подставим из настроек пользователя
-    forecast = await get_forecast_for_city(DEFAULT_CITY)
+async def cmd_today(message: Message, state: FSMContext) -> None:
+    user_id = message.from_user.id
+    city = get_saved_city(user_id)
+
+    # если город ещё не выбран
+    if city is None:
+        await message.answer(
+            "давай сначала выберем город по умолчанию 🌍\n"
+            f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
+        )
+        await state.set_state(CityStates.choosing_default)
+        return
+
+    # город уже известен 
+    forecast = await get_forecast_for_city(city)
 
     summary = (
         f"сегодня в {forecast.city}: "
@@ -74,7 +107,7 @@ async def cmd_today(message: Message) -> None:
     else:
         summary += ", дождя не ожидается"
 
-    # очень простой совет по одежде — потом усложним
+    # очень простой совет по одежде — тут потом можно подставить ваш engine
     if forecast.max_temp < 0:
         outfit = "надень тёплые штаны, свитер, шарф и зимнюю куртку"
     elif forecast.max_temp < 8:
@@ -87,7 +120,91 @@ async def cmd_today(message: Message) -> None:
     if forecast.will_rain:
         outfit += ", и обязательно возьми зонт"
 
-    await message.answer(summary + "\n\n" + outfit)
+    footer = (
+        f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
+        "если хочешь сменить — нажми «Сменить город» или команду /change_city."
+    )
+
+    await message.answer(summary + "\n\n" + outfit + footer)
+
+
+# --- первый выбор города  ---
+
+
+@command_router.message(CityStates.choosing_default)
+async def process_first_city(message: Message, state: FSMContext) -> None:
+    raw_city = (message.text or "").strip()
+    if not raw_city:
+        await message.answer("напиши, пожалуйста, название города текстом 🙏")
+        return
+
+    try:
+        forecast = await get_forecast_for_city(raw_city)
+    except Exception:
+        await message.answer(
+            "не смогла найти такой город 😿\n"
+            "попробуй ещё раз, например: Омск или Prague."
+        )
+        return
+
+    save_city(message.from_user.id, forecast.city)
+
+    await state.clear()
+
+    summary = (
+        f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
+        f"сегодня от {round(forecast.min_temp)}°C до {round(forecast.max_temp)}°C, "
+        f"ветер до {round(forecast.wind_max)} м/с"
+    )
+
+    if forecast.will_rain:
+        summary += ", возможен дождь ☔️"
+    else:
+        summary += ", дождя не ожидается"
+
+    await message.answer(
+        summary
+        + "\n\nесли захочешь сменить город, используй /change_city или кнопку «Сменить город»."
+    )
+
+
+# --- Сменить город ---
+
+
+@command_router.message(Command("change_city"))
+@command_router.message(F.text == "Сменить город")
+async def cmd_change_city(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "на какой город поменять? 🌍\n"
+        "просто напиши его названием."
+    )
+    await state.set_state(CityStates.changing_city)
+
+
+@command_router.message(CityStates.changing_city)
+async def process_change_city(message: Message, state: FSMContext) -> None:
+    raw_city = (message.text or "").strip()
+    if not raw_city:
+        await message.answer("напиши, пожалуйста, название города.")
+        return
+
+    try:
+        forecast = await get_forecast_for_city(raw_city)
+    except Exception:
+        await message.answer(
+            "не нашла такой город 🤔\n"
+            "попробуй ещё раз, проверь раскладку и орфографию."
+        )
+        return
+
+    save_city(message.from_user.id, forecast.city)
+    await state.clear()
+
+    await message.answer(
+        f"обновила город по умолчанию на {forecast.city} ✅\n"
+        "теперь «Совет на сегодня» будет использовать этот город."
+    )
+
 
 # --- Настройки ---
 
@@ -101,27 +218,3 @@ async def cmd_settings(message: Message) -> None:
     )
 
 
-# --- Изменить район ---
-
-
-@command_router.message(Command("change_area"))
-@command_router.message(F.text == "Изменить район")
-async def cmd_change_area(message: Message) -> None:
-    await message.answer(
-        "здесь мы позже спросим, в каком районе ты будешь сегодня "
-        "(дом, кампус, другой район).\n"
-        "сейчас это просто заглушка.",
-    )
-
-
-# --- Изменить стиль ---
-
-
-@command_router.message(Command("change_style"))
-@command_router.message(F.text == "Изменить стиль")
-async def cmd_change_style(message: Message) -> None:
-    await message.answer(
-        "здесь позже можно будет выбрать стиль одежды: "
-        "casual / офис / спорт / минимализм.\n"
-        "пока заглушка.",
-    )

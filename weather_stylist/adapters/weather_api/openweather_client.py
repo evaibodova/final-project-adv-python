@@ -3,15 +3,15 @@ from typing import List
 
 import aiohttp
 
-from weather_stylist.infra.config import WEATHERAPI_KEY
+from weather_stylist.infra.config import WEATHERAPI_KEY, DEFAULT_CITY
 
 
 @dataclass
 class HourForecast:
-    hour: int          # 0..23
-    temp: float        # °C
-    feels_like: float  # °C
-    wind: float        # м/с
+    hour: int          
+    temp: float       
+    feels_like: float  
+    wind: float       
     will_rain: bool
 
 
@@ -28,16 +28,18 @@ class DayForecast:
 BASE_URL = "https://api.weatherapi.com/v1/forecast.json"
 
 
-async def get_forecast_for_city(city: str) -> DayForecast:
+async def get_forecast_for_city(city: str | None = None) -> DayForecast:
     """
     Получаем прогноз на 1 день для города через WeatherAPI и
     приводим к удобной структуре DayForecast.
     """
+    if not city:
+        city = DEFAULT_CITY
 
     params = {
         "key": WEATHERAPI_KEY,
         "q": city,
-        "days": 1,       # прогноз на 1 день
+        "days": 1,
         "aqi": "no",
         "alerts": "no",
         "lang": "ru",
@@ -46,27 +48,28 @@ async def get_forecast_for_city(city: str) -> DayForecast:
     async with aiohttp.ClientSession() as session:
         async with session.get(BASE_URL, params=params) as resp:
             data = await resp.json()
+            
+    if "error" in data:
+        raise ValueError(data["error"].get("message", "weather api error"))
 
     location = data["location"]["name"]
     day = data["forecast"]["forecastday"][0]["day"]
     hours = data["forecast"]["forecastday"][0]["hour"]
 
-    # дневные сводные значения от WeatherAPI (уже посчитаны)
     min_temp = day["mintemp_c"]
     max_temp = day["maxtemp_c"]
     wind_max_kph = day["maxwind_kph"]
-    # переведём км/ч в м/с
     wind_max = wind_max_kph / 3.6
 
     will_rain = day.get("daily_will_it_rain", 0) == 1 or day.get(
-        "daily_chance_of_rain", 0) > 0
+        "daily_chance_of_rain", 0
+    ) > 0
 
     hourly: List[HourForecast] = []
 
     for h in hours:
-        # пример строки времени: "2024-12-06 15:00"
-        time_str: str = h["time"]
-        hour = int(time_str[-5:-3])  # берём "15" из "... 15:00"
+        time_str: str = h["time"]          
+        hour = int(time_str[-5:-3])
 
         temp = h["temp_c"]
         feels_like = h["feelslike_c"]
