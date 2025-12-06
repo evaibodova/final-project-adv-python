@@ -1,4 +1,4 @@
-from ports import UserRepo, FeedbackRepo
+from .ports import UserRepo, FeedbackRepo
 
 __all__ = [
     "UserRepo",
