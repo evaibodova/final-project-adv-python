@@ -8,18 +8,25 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
+from weather_stylist.adapters.user_bd.bd import SessionLocal
+from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from weather_stylist.models import User
+
+from contextlib import contextmanager
+from sqlalchemy.orm import Session
+
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
 
-_user_default_cities: dict[int, str] = {}
 
-
-def get_saved_city(user_id: int) -> str | None:
-    return _user_default_cities.get(user_id)
-
-
-def save_city(user_id: int, city: str) -> None:
-    _user_default_cities[user_id] = city
+@contextmanager
+def user_repo_ctx():
+    session: Session = SessionLocal()
+    try:
+        repo = SqlAlchemyUserRepo(session)
+        yield repo
+    finally:
+        session.close()
 
 
 class CityStates(StatesGroup):
@@ -77,10 +84,13 @@ async def cmd_help(message: Message) -> None:
 @command_router.message(Command("today"))
 @command_router.message(F.text == "Совет на сегодня")
 async def cmd_today(message: Message, state: FSMContext) -> None:
-    user_id = message.from_user.id
-    city = get_saved_city(user_id)
+    user_tg_id = message.from_user.id
 
-    # если город ещё не выбран
+    with user_repo_ctx() as user_repo:
+        user = user_repo.get_user_by_tg_id(user_tg_id)
+
+    city = user.city if user is not None else None
+
     if city is None:
         await message.answer(
             "давай сначала выберем город по умолчанию 🌍\n"
@@ -143,7 +153,39 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         )
         return
 
-    save_city(message.from_user.id, forecast.city)
+    user_tg_id = message.from_user.id
+    user_name = message.from_user.full_name
+
+    # бд
+    with user_repo_ctx() as user_repo:
+        existing = user_repo.get_user_by_tg_id(user_tg_id)
+
+        if existing is None:
+            user = User(
+                tg_id=user_tg_id,
+                city=forecast.city,
+                name=user_name,
+                region="unknown",   # пока заглушка
+                thermo_profile=0,
+                warmth_shift=0.0,
+                feedback_count=0,
+                cold_count=0,
+                hot_count=0,
+            )
+        else:
+            user = User(
+                tg_id=existing.tg_id,
+                city=forecast.city,           # обновили город
+                name=user_name,
+                region=existing.region,
+                thermo_profile=existing.thermo_profile,
+                warmth_shift=existing.warmth_shift,
+                feedback_count=existing.feedback_count,
+                cold_count=existing.cold_count,
+                hot_count=existing.hot_count,
+            )
+
+        user_repo.save(user)
 
     await state.clear()
 
@@ -162,7 +204,6 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         summary
         + "\n\nесли захочешь сменить город, используй /change_city или кнопку «Сменить город»."
     )
-
 
 # --- Сменить город ---
 
@@ -195,7 +236,39 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
         )
         return
 
-    save_city(message.from_user.id, forecast.city)
+    user_tg_id = message.from_user.id
+    user_name = message.from_user.full_name
+
+    with user_repo_ctx() as user_repo:
+        existing = user_repo.get_user_by_tg_id(user_tg_id)
+
+        if existing is None:
+            user = User(
+                tg_id=user_tg_id,
+                city=forecast.city,
+                name=user_name,
+                region="unknown",
+                thermo_profile=0,
+                warmth_shift=0.0,
+                feedback_count=0,
+                cold_count=0,
+                hot_count=0,
+            )
+        else:
+            user = User(
+                tg_id=existing.tg_id,
+                city=forecast.city,          # меняем город
+                name=existing.name,
+                region=existing.region,
+                thermo_profile=existing.thermo_profile,
+                warmth_shift=existing.warmth_shift,
+                feedback_count=existing.feedback_count,
+                cold_count=existing.cold_count,
+                hot_count=existing.hot_count,
+            )
+
+        user_repo.save(user)
+
     await state.clear()
 
     await message.answer(
