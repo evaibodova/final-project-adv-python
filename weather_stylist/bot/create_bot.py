@@ -6,6 +6,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from weather_stylist.bot.handlers.commands import command_router
 from weather_stylist.bot.handlers.text_commands import text_router
+from weather_stylist.infra.alerts_scheduler import run_weather_alerts_loop
 
 
 logging.basicConfig(level=logging.INFO,
@@ -21,6 +22,7 @@ dp.include_router(text_router)
 
 async def main() -> None:
     """Точка входа: запускаем polling."""
+    asyncio.create_task(run_weather_alerts_loop(bot, interval_hours=6))
     await dp.start_polling(bot)
 
 
