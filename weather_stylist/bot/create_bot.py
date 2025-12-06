@@ -5,6 +5,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from weather_stylist.bot.handlers.commands import command_router
+from weather_stylist.bot.handlers.text_commands import text_router
+
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -14,6 +16,7 @@ bot = Bot(token='8343951267:AAF8Me-frmJ4Jblqczyhb2cFE9_bwIYqGik',
           default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(command_router)
+dp.include_router(text_router)
 
 
 async def main() -> None:
