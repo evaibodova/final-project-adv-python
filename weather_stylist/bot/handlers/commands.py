@@ -18,6 +18,12 @@ from sqlalchemy.orm import Session
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
 
+THERMO_PREFS: dict[int, str] = {}
+
+TEXT_COLD = "Я мерзляк"
+TEXT_HOT = "Мне всегда жарко"
+TEXT_NEUTRAL = "У меня нет предпочтений"
+
 
 @contextmanager
 def user_repo_ctx():
@@ -37,7 +43,7 @@ class CityStates(StatesGroup):
 command_router = Router()
 
 
-# --- главное меню ---
+# главное меню
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -50,6 +56,17 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
+
+def thermo_prefs_keyboard() -> ReplyKeyboardMarkup:
+    """кнопки выбора термопрофиля"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=TEXT_COLD)],
+            [KeyboardButton(text=TEXT_HOT)],
+            [KeyboardButton(text=TEXT_NEUTRAL)],
+        ],
+        resize_keyboard=True,
+    )
 
 # --- /start ---
 
@@ -78,7 +95,7 @@ async def cmd_help(message: Message) -> None:
     )
 
 
-# --- Совет на сегодня ---
+#  Совет на сегодня
 
 
 @command_router.message(Command("today"))
@@ -113,7 +130,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     else:
         summary += ", дождя не ожидается"
 
-    # очень простой совет по одежде — тут потом можно подставить ваш engine
+    # тут будет engine
     if forecast.max_temp < 0:
         outfit = "надень тёплые штаны, свитер, шарф и зимнюю куртку"
     elif forecast.max_temp < 8:
@@ -134,7 +151,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     await message.answer(summary + "\n\n" + outfit + footer)
 
 
-# --- первый выбор города  ---
+#  первый выбор города
 
 
 @command_router.message(CityStates.choosing_default)
@@ -208,7 +225,15 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         + "\n\nесли захочешь сменить город, используй /change_city или кнопку «Сменить город»."
     )
 
-# --- Сменить город ---
+    # если для этого пользователя ещё не выбраны предпочтения
+    if user_tg_id not in THERMO_PREFS:
+        await message.answer(
+            "и ещё один вопросик: как ты обычно ощущаешь погоду? 🧊🥵\n"
+            "выбери вариант ниже:",
+            reply_markup=thermo_prefs_keyboard(),
+        )
+
+#  Сменить город
 
 
 @command_router.message(Command("change_city"))
@@ -281,13 +306,45 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     )
 
 
-# --- Настройки ---
-
-
+# термопрофиль
 @command_router.message(Command("settings"))
 @command_router.message(F.text == "Настройки")
 async def cmd_settings(message: Message) -> None:
+    user_id = message.from_user.id
+    current = THERMO_PREFS.get(user_id)
+
+    if current == "cold":
+        status = "сейчас у тебя профиль: «я мерзляк»."
+    elif current == "hot":
+        status = "сейчас у тебя профиль: «мне всегда жарко»."
+    elif current == "neutral":
+        status = "сейчас у тебя профиль: «у меня нет предпочтений»."
+    else:
+        status = "у тебя пока не выбраны термопредпочтения."
+
     await message.answer(
-        "здесь будут настройки термочувствительности, стиля, города и времени рассылки.\n"
-        "пока просто заглушка.",
+        status
+        + "\n\nвыбери, как ты обычно ощущаешь погоду:",
+        reply_markup=thermo_prefs_keyboard(),
     )
+
+
+# --- обработчик выбора термопрофиля ---
+
+
+@command_router.message(F.text.in_([TEXT_COLD, TEXT_HOT, TEXT_NEUTRAL]))
+async def handle_thermo_choice(message: Message) -> None:
+    user_id = message.from_user.id
+    choice = message.text
+
+    if choice == TEXT_COLD:
+        THERMO_PREFS[user_id] = "cold"
+        reply = "запомнила: ты мерзляк 🧊\nбуду советовать чуть теплее."
+    elif choice == TEXT_HOT:
+        THERMO_PREFS[user_id] = "hot"
+        reply = "запомнила: тебе всегда жарко 🔥\nбуду советовать полегче."
+    else:
+        THERMO_PREFS[user_id] = "neutral"
+        reply = "ок, без особых предпочтений 😌\nбуду советовать что-то среднее."
+
+    await message.answer(reply, reply_markup=main_menu_keyboard())
