@@ -28,6 +28,24 @@ class SqlAlchemyUserRepo(UserRepo):
             hot_count=orm_user.hot_count
         )
 
+    def get_all_users(self) -> list[User]:
+        orm_users: list[UserORM] = self.session.execute(
+            select(UserORM)).scalars().all()
+
+        return [
+            User(
+                tg_id=orm_user.tg_id,
+                city=orm_user.city,
+                name=orm_user.name,
+                region=orm_user.region,
+                thermo_profile=orm_user.thermo_profile,
+                warmth_shift=orm_user.warmth_shift,
+                feedback_count=orm_user.feedback_count,
+                cold_count=orm_user.cold_count,
+                hot_count=orm_user.hot_count
+            ) for orm_user in orm_users
+        ]
+
     def save(self, user: User) -> User:
         orm_user: UserORM | None = self.session.get(UserORM, user.tg_id)
         if orm_user is None:
