@@ -44,7 +44,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Совет на сегодня")],
-            [KeyboardButton(text="Изменить город")]
+            [KeyboardButton(text="Изменить город")],
             [KeyboardButton(text="Настройки")],
         ],
         resize_keyboard=True,
@@ -209,7 +209,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
 
 @command_router.message(Command("change_city"))
-@command_router.message(F.text == "Сменить город")
+@command_router.message(F.text == "Изменить город")
 async def cmd_change_city(message: Message, state: FSMContext) -> None:
     await message.answer(
         "на какой город поменять? 🌍\n"
