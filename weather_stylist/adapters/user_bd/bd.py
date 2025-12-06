@@ -15,15 +15,16 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker
 )
+from pathlib import Path
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine("sqlite:///:memory:", echo=False, future=True)
-Session = sessionmaker(bind=engine, future=True)
-SessionLocal = Session
+DB_PATH = Path(__file__).parent / "weather_stylist.db"
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True)
+SessionLocal = sessionmaker(bind=engine, future=True)
 
 
 class UserORM(Base):

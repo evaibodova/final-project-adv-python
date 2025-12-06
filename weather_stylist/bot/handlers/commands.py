@@ -8,9 +8,10 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
+from weather_stylist.models import User
 from weather_stylist.adapters.user_bd.bd import SessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
-from weather_stylist.models import User
+
 
 from contextlib import contextmanager
 from sqlalchemy.orm import Session
