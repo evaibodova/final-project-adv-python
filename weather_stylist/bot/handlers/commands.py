@@ -8,6 +8,7 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     FSInputFile,
+    InputMediaPhoto,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -453,17 +454,21 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
             reply_markup=main_menu_keyboard(),
         )
     else:
-        # первую фотку с подписью
-        first = FSInputFile(photo_paths[0])
-        await message.answer_photo(
-            first,
-            caption=caption,
+        # отправляем подпись отдельным сообщением
+        await message.answer(caption)
+        
+        # отправляем все фотографии медиа-группой
+        media_group = [
+            InputMediaPhoto(media=FSInputFile(path))
+            for path in photo_paths
+        ]
+        await message.answer_media_group(media_group)
+        
+        # отправляем главное меню
+        await message.answer(
+            "выбери действие:",
             reply_markup=main_menu_keyboard(),
         )
-
-        # остальные две просто картинками
-        for path in photo_paths[1:]:
-            await message.answer_photo(FSInputFile(path))
 
     await state.clear()
 
