@@ -59,6 +59,27 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def after_advice_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Выбрать стиль")],
+            [KeyboardButton(text="Совет на сегодня")],
+            [KeyboardButton(text="Изменить город")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def style_choice_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Casual"), KeyboardButton(text="Офисный")],
+            [KeyboardButton(text="Спортивный")],
+        ],
+        resize_keyboard=True,
+    )
+
+
 # --- /start ---
 
 
@@ -139,7 +160,10 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         "если хочешь сменить — нажми «Сменить город» или команду /change_city."
     )
 
-    await message.answer(summary + "\n\n" + outfit + footer)
+    await message.answer(
+        summary + "\n\n" + outfit + footer,
+        reply_markup=after_advice_keyboard(),
+    )
 
 
 # --- первый выбор города  ---
@@ -194,6 +218,19 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
             )
 
         user_repo.save(user)
+
+    data_state = await state.get_data()
+    return_to_style = data_state.get("return_to_style", False)
+    
+    if return_to_style:
+        await state.update_data(city=forecast.city, return_to_style=False)
+        await message.answer(
+            f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
+            "теперь выбери стиль одежды 👔",
+            reply_markup=style_choice_keyboard(),
+        )
+        await state.set_state(StyleStates.choosing_style)
+        return
 
     await state.clear()
 
@@ -350,6 +387,36 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
 # --- Выбор стиля ---
 
 
+@command_router.message(Command("choose_style"))
+@command_router.message(F.text == "Выбрать стиль")
+async def cmd_choose_style(message: Message, state: FSMContext) -> None:
+    user_tg_id = message.from_user.id
+    
+    with user_repo_ctx() as user_repo:
+        user = user_repo.get_user_by_tg_id(user_tg_id)
+    
+    city = user.city if user is not None else None
+    
+    if city is None:
+        await message.answer(
+            "давай сначала выберем город по умолчанию 🌍\n"
+            f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
+        )
+        await state.set_state(CityStates.choosing_default)
+        await state.update_data(return_to_style=True)
+        return
+    
+    await state.update_data(city=city)
+    await message.answer(
+        "выбери стиль одежды 👔\n"
+        "Casual — повседневный стиль\n"
+        "Офисный — деловой стиль\n"
+        "Спортивный — для активного отдыха",
+        reply_markup=style_choice_keyboard(),
+    )
+    await state.set_state(StyleStates.choosing_style)
+
+
 @command_router.message(StyleStates.choosing_style)
 async def process_style_choice(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip().lower()
@@ -369,7 +436,8 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
     style_key = style_map.get(text)
     if style_key is None:
         await message.answer(
-            "пожалуйста, выбери стиль с кнопок: Casual, Офисный или Спортивный 😊"
+            "пожалуйста, выбери стиль с кнопок: Casual, Офисный или Спортивный 😊",
+            reply_markup=style_choice_keyboard(),
         )
         return
 
