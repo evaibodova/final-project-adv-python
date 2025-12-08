@@ -52,19 +52,9 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Совет на сегодня")],
+            [KeyboardButton(text="Выбрать стиль")],
             [KeyboardButton(text="Изменить город")],
             [KeyboardButton(text="Настройки")],
-        ],
-        resize_keyboard=True,
-    )
-
-
-def after_advice_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Выбрать стиль")],
-            [KeyboardButton(text="Совет на сегодня")],
-            [KeyboardButton(text="Изменить город")],
         ],
         resize_keyboard=True,
     )
@@ -160,10 +150,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         "если хочешь сменить — нажми «Сменить город» или команду /change_city."
     )
 
-    await message.answer(
-        summary + "\n\n" + outfit + footer,
-        reply_markup=after_advice_keyboard(),
-    )
+    await message.answer(summary + "\n\n" + outfit + footer)
 
 
 # --- первый выбор города  ---
