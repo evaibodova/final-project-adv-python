@@ -9,9 +9,14 @@ from weather_stylist.bot.handlers.text_commands import text_router
 from weather_stylist.infra.alerts_scheduler import run_weather_alerts_loop
 
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    filename="bot.log",
+    filemode="a",
+)
 logger = logging.getLogger(__name__)
+
 
 bot = Bot(token='8343951267:AAF8Me-frmJ4Jblqczyhb2cFE9_bwIYqGik',
           default=DefaultBotProperties(parse_mode=ParseMode.HTML))
