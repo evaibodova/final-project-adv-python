@@ -13,7 +13,11 @@ from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
-    sessionmaker
+)
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    create_async_engine,
+    async_sessionmaker,
 )
 from pathlib import Path
 
@@ -24,8 +28,18 @@ class Base(DeclarativeBase):
 
 DB_PATH = Path(__file__).parent / "weather_stylist.db"
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True)
-SessionLocal = sessionmaker(bind=engine, future=True)
 
+async_engine = create_async_engine(
+    f"sqlite+aiosqlite:///{DB_PATH}",
+    echo=False,
+    future=True,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    async_engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
 
 class UserORM(Base):
     __tablename__ = "users"
