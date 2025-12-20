@@ -1,9 +1,9 @@
 from itertools import product
 from typing import List
 
-from weather_stylist.domain.user import UserProfile
-from weather_stylist.domain.weather import DayForecast
-from weather_stylist.domain.outfit import Outfit, OutfitAdvice
+from weather_stylist.models.user import User
+from weather_stylist.models.weather import DayForecast
+from weather_stylist.models.outfit import Outfit, OutfitAdvice
 
 ITEM_WARMTH = {
     # базовый слой
@@ -18,7 +18,7 @@ ITEM_WARMTH = {
 
     # верхняя одежда
     "none_outer": 0.0,
-    "light_jacket": 3.0,   # демисезонная
+    "light_jacket": 3.0,  # демисезонная
     "coat": 4.0,
     "winter_jacket": 5.0,
 
@@ -38,8 +38,8 @@ ACCESSORY_OPTIONS: List[List[str]] = [
     ["hat", "scarf", "gloves"],
 ]
 
+
 def is_valid_combo(forecast: DayForecast, outer: str) -> bool:
-    """доменные ограничения, чтобы не было 'без куртки при -20'."""
     t_min = forecast.min_temp
 
     if t_min < 0 and outer == "none_outer":
@@ -50,6 +50,7 @@ def is_valid_combo(forecast: DayForecast, outer: str) -> bool:
 
     return True
 
+
 def combo_warmth(base: str, mid: str, outer: str, accessories: List[str]) -> float:
     w = 0.0
     w += ITEM_WARMTH[base]
@@ -59,14 +60,10 @@ def combo_warmth(base: str, mid: str, outer: str, accessories: List[str]) -> flo
         w += ITEM_WARMTH[a]
     return w
 
-def required_warmth_rule_based(forecast: DayForecast, user: UserProfile) -> float:
-    """
-    Возвращает, сколько условных единиц тепла хотим дать пользователю.
-    Потом это можно заменить на model.predict(features).
-    """
+
+def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
     t = forecast.max_temp
     base = 0.0
-
     if t <= -15:
         base = 7.0
     elif t <= -5:
@@ -79,16 +76,15 @@ def required_warmth_rule_based(forecast: DayForecast, user: UserProfile) -> floa
         base = 3.0
     else:
         base = 2.0
-
-    # поправка на индивидуальность: warmth_shift >0 -> теплее, <0 -> прохладнее
     return base + user.warmth_shift
 
-def pick_outfit_by_index(forecast: DayForecast, user: UserProfile, target_warmth: float) -> Outfit:
+
+def pick_outfit_by_index(forecast: DayForecast, user: User, target_warmth: float) -> Outfit:
     best_combo = None
     best_diff = 999.0
 
     for base, mid, outer, accessories in product(
-        BASE_OPTIONS, MID_OPTIONS, OUTER_OPTIONS, ACCESSORY_OPTIONS
+            BASE_OPTIONS, MID_OPTIONS, OUTER_OPTIONS, ACCESSORY_OPTIONS
     ):
         if not is_valid_combo(forecast, outer):
             continue
@@ -101,13 +97,13 @@ def pick_outfit_by_index(forecast: DayForecast, user: UserProfile, target_warmth
             best_combo = (base, mid, outer, accessories)
 
     if best_combo is None:
-        # на всякий случай fallback
         best_combo = ("tshirt", "hoodie", "light_jacket", [])
 
     base, mid, outer, accessories = best_combo
     return Outfit(base=base, mid=mid, outer=outer, accessories=accessories)
 
-def render_outfit_text(forecast: DayForecast, user: UserProfile, outfit: Outfit) -> str:
+
+def render_outfit_text(forecast: DayForecast, user: User, outfit: Outfit) -> str:
     parts: List[str] = []
 
     # база
@@ -153,14 +149,9 @@ def render_outfit_text(forecast: DayForecast, user: UserProfile, outfit: Outfit)
         f"я бы предложил тебе надеть {clothes_text}."
     )
 
-def build_today_advice(forecast: DayForecast, user: UserProfile) -> OutfitAdvice:
-    # 1. считаем, сколько тепла нужно (пока rule-based)
+
+def build_today_advice(forecast: DayForecast, user: User) -> OutfitAdvice:
     target_warmth = required_warmth_rule_based(forecast, user)
-
-    # 2. подбираем комплект ближе всего к этому уровню тепла
     outfit = pick_outfit_by_index(forecast, user, target_warmth)
-
-    # 3. собираем текст
     text = render_outfit_text(forecast, user, outfit)
-
     return OutfitAdvice(text=text, outfit=outfit)

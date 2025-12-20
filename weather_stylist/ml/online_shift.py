@@ -1,19 +1,9 @@
-from weather_stylist.domain.user import UserProfile
-
+from weather_stylist.models.user import User
 
 ALPHA_BASE = 0.5
 
 
-def update_warmth_shift(user: UserProfile, label: int) -> UserProfile:
-    """
-    label:
-      -1 = было холодно  -> сделать теплее
-       0 = норм          -> не менять
-      +1 = было жарко    -> сделать прохладнее
-
-    обновляет user.warmth_shift и счётчики.
-    """
-
+def update_warmth_shift(user: User, label: int) -> User:
     user.feedback_count += 1
 
     if label == -1:

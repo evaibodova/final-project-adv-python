@@ -41,7 +41,7 @@ def test_pick_outfit_very_cold_has_outer():
     target = required_warmth_rule_based(forecast, user)
     outfit = pick_outfit_by_index(forecast, user, target)
 
-    assert outfit.outer in {"coat", "parka", "winter_coat"}
+    assert outfit.outer in {"coat", "parka", "winter_jacket"}
 
 
 def test_pick_outfit_warm_day_without_heavy_outer():

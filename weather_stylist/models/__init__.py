@@ -1,6 +1,11 @@
-from .models import User, FeedbackRecord
+from .user import User, FeedbackRecord
+from .outfit import Outfit, OutfitAdvice
+from .weather import DayForecast
 
 __all__ = [
     "User",
-    "FeedbackRecord"
+    "FeedbackRecord",
+    "DayForecast",
+    "Outfit",
+    "OutfitAdvice"
 ]

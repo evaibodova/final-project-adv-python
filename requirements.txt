@@ -81,3 +81,6 @@ tzdata==2025.2
 wcwidth==0.2.14
 widgetsnbextension==4.0.15
 yarl==1.22.0
+
+pytest~=8.3.2
+asyncio~=3.4.3
