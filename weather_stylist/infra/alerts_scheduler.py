@@ -8,7 +8,7 @@ from aiogram import Bot
 from weather_stylist.models import User
 from weather_stylist.adapters.weather_api.openweather_client import get_two_days_forecast
 from sqlalchemy.orm import Session
-from weather_stylist.adapters.user_bd.bd import SessionLocal
+from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ async def run_weather_alerts_loop(bot: Bot, interval_hours: int = 6) -> None:
     while True:
         try:
             # создаём сессию к базе
-            session: Session = SessionLocal()
+            session: Session = AsyncSessionLocal()
 
             user_repo = SqlAlchemyUserRepo(session)
             users: list[User] = user_repo.get_all_users()

@@ -13,7 +13,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
-from weather_stylist.adapters.user_bd.bd import SessionLocal
+from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
 from weather_stylist.models import User
 
@@ -26,7 +26,36 @@ from weather_stylist.infra.config import DEFAULT_CITY
 
 @contextmanager
 def user_repo_ctx():
-    session: Session = SessionLocal()
+    session: Session = AsyncSessionLocal()
+    try:
+        repo = SqlAlchemyUserRepo(session)
+        yield repo
+    finally:
+        session.close()
+
+
+class CityStates(StatesGroup):
+    choosing_default = State()   # первый выбор города
+    changing_city = State()      # смена города
+
+
+class StyleStates(StatesGroup):
+    choosing_style = State()     # выбор стиля одежды
+
+
+command_router = Router()
+
+
+# --- константы для термопрофиля ---
+
+TEXT_COLD = "Я мерзляк"
+TEXT_HOT = "Мне всегда жарко"
+TEXT_NEUTRAL = "У меня нет предпочтений"
+
+
+@contextmanager
+def user_repo_ctx():
+    session: Session = AsyncSessionLocal()
     try:
         repo = SqlAlchemyUserRepo(session)
         yield repo
@@ -56,6 +85,17 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="Выбрать стиль")],
             [KeyboardButton(text="Изменить город")],
             [KeyboardButton(text="Настройки")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def thermo_choice_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=TEXT_COLD)],
+            [KeyboardButton(text=TEXT_HOT)],
+            [KeyboardButton(text=TEXT_NEUTRAL)],
         ],
         resize_keyboard=True,
     )
@@ -109,17 +149,28 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     with user_repo_ctx() as user_repo:
         user = user_repo.get_user_by_tg_id(user_tg_id)
 
-    city = user.city if user is not None else None
-
-    if city is None:
+    # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
+    if user is None:
+        await state.update_data(expect_city_after_thermo=True)
         await message.answer(
-            "давай сначала выберем город по умолчанию 🌍\n"
+            "давай познакомимся 🧊🔥\n"
+            "как ты обычно ощущаешь погоду?",
+            reply_markup=thermo_choice_keyboard(),
+        )
+        return
+
+    city = user.city
+
+    # 2. пользователь есть, но города ещё нет — просим город
+    if not city:
+        await message.answer(
+            "давай выберем город по умолчанию 🌍\n"
             f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
         )
         await state.set_state(CityStates.choosing_default)
         return
 
-    # город уже известен
+    # 3. и термопрофиль, и город уже есть — даём совет
     forecast = await get_forecast_for_city(city)
 
     summary = (
@@ -133,7 +184,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     else:
         summary += ", дождя не ожидается"
 
-    # очень простой совет по одежде — тут потом можно подставить ваш engine
+    # простая заглушка по одежде — сюда позже приедет ваш engine
     if forecast.max_temp < 0:
         outfit = "надень тёплые штаны, свитер, шарф и зимнюю куртку"
     elif forecast.max_temp < 8:
@@ -148,13 +199,13 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     footer = (
         f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
-        "если хочешь сменить — нажми «Сменить город» или команду /change_city."
+        "если хочешь сменить — нажми «Изменить город» или команду /change_city."
     )
 
     await message.answer(summary + "\n\n" + outfit + footer)
 
 
-# --- первый выбор города  ---
+# --- первый выбор города ---
 
 
 @command_router.message(CityStates.choosing_default)
@@ -176,17 +227,22 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
     user_name = message.from_user.full_name
 
-    # бд
+    data_state = await state.get_data()
+    thermo_from_state = data_state.get("thermo_profile")
+    return_to_style = data_state.get("return_to_style", False)
+
     with user_repo_ctx() as user_repo:
         existing = user_repo.get_user_by_tg_id(user_tg_id)
 
         if existing is None:
+            thermo_value = int(
+                thermo_from_state) if thermo_from_state is not None else 0
             user = User(
                 tg_id=user_tg_id,
                 city=forecast.city,
                 name=user_name,
-                region="unknown",   # пока заглушка
-                thermo_profile=0,
+                region="unknown",
+                thermo_profile=thermo_value,
                 warmth_shift=0.0,
                 feedback_count=0,
                 cold_count=0,
@@ -196,7 +252,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
             user = User(
                 tg_id=existing.tg_id,
                 city=forecast.city,           # обновили город
-                name=user_name,
+                name=existing.name,
                 region=existing.region,
                 thermo_profile=existing.thermo_profile,
                 warmth_shift=existing.warmth_shift,
@@ -207,9 +263,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
         user_repo.save(user)
 
-    data_state = await state.get_data()
-    return_to_style = data_state.get("return_to_style", False)
-    
+    # если мы пришли сюда из "Выбрать стиль"
     if return_to_style:
         await state.update_data(city=forecast.city, return_to_style=False)
         await message.answer(
@@ -222,6 +276,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     await state.clear()
 
+    # сразу же даём совет на сегодня
     summary = (
         f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
         f"сегодня от {round(forecast.min_temp)}°C до {round(forecast.max_temp)}°C, "
@@ -235,10 +290,11 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         summary
-        + "\n\nесли захочешь сменить город, используй /change_city или кнопку «Сменить город»."
+        + "\n\nв следующий раз просто жми «Совет на сегодня»."
     )
 
-# --- Сменить город ---
+
+# --- смена города ---
 
 
 @command_router.message(Command("change_city"))
@@ -267,6 +323,7 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
             "если это очень маленький населённый пункт, "
             "попробуй ближайший крупный город."
         )
+        await state.clear()
         return
 
     user_tg_id = message.from_user.id
@@ -290,7 +347,7 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
         else:
             user = User(
                 tg_id=existing.tg_id,
-                city=forecast.city,          # меняем город
+                city=forecast.city,
                 name=existing.name,
                 region=existing.region,
                 thermo_profile=existing.thermo_profile,
@@ -310,17 +367,110 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     )
 
 
-# --- Настройки ---
-
+# --- настройки термочувствительности ---
 
 
 @command_router.message(Command("settings"))
 @command_router.message(F.text == "Настройки")
-async def cmd_settings(message: Message) -> None:
+async def cmd_settings(message: Message, state: FSMContext) -> None:
+    user_tg_id = message.from_user.id
+
+    with user_repo_ctx() as user_repo:
+        user = user_repo.get_user_by_tg_id(user_tg_id)
+
+    if user is None:
+        await state.update_data(expect_city_after_thermo=False)
+        await message.answer(
+            "я пока ничего о тебе не знаю 🥺\n"
+            "давай сначала настроим, как ты ощущаешь погоду:",
+            reply_markup=thermo_choice_keyboard(),
+        )
+        return
+
+    if user.thermo_profile == -1:
+        status = "сейчас у тебя профиль: «я мерзляк»."
+    elif user.thermo_profile == 1:
+        status = "сейчас у тебя профиль: «мне всегда жарко»."
+    else:
+        status = "сейчас у тебя профиль: «у меня нет предпочтений»."
+
+    await state.update_data(expect_city_after_thermo=False)
     await message.answer(
-        "здесь будут настройки термочувствительности, стиля, города и времени рассылки.\n"
-        "пока просто заглушка.",
+        status + "\n\nесли хочешь изменить термочувствительность — выбери вариант ниже:",
+        reply_markup=thermo_choice_keyboard(),
     )
+
+
+# --- обработчик выбора термопрофиля ---
+
+
+@command_router.message(F.text.in_([TEXT_COLD, TEXT_HOT, TEXT_NEUTRAL]))
+async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
+    user_tg_id = message.from_user.id
+    text = (message.text or "").strip()
+
+    if text == TEXT_COLD:
+        value = -1
+        desc = "запомнила: ты мерзляк 🧊 — буду советовать теплее."
+    elif text == TEXT_HOT:
+        value = 1
+        desc = "запомнила: тебе всегда жарко 🔥 — буду советовать полегче."
+    else:
+        value = 0
+        desc = "запомнила: без особых предпочтений 😌 — буду советовать что-то среднее."
+
+    data = await state.get_data()
+    expect_city = data.get("expect_city_after_thermo", False)
+
+    with user_repo_ctx() as user_repo:
+        user = user_repo.get_user_by_tg_id(user_tg_id)
+
+        if user is None:
+            if expect_city:
+                # первый заход через /today: сохраним выбор во временное состояние,
+                # а пользователя создадим после выбора города в process_first_city
+                await state.update_data(thermo_profile=value)
+            else:
+                # пользователь пришёл через /settings — создаём запись в БД без города
+                user = User(
+                    tg_id=user_tg_id,
+                    city=None,
+                    name=message.from_user.full_name,
+                    region="unknown",
+                    thermo_profile=value,
+                    warmth_shift=0.0,
+                    feedback_count=0,
+                    cold_count=0,
+                    hot_count=0,
+                )
+                user_repo.save(user)
+        else:
+            updated = User(
+                tg_id=user.tg_id,
+                city=user.city,
+                name=user.name,
+                region=user.region,
+                thermo_profile=value,
+                warmth_shift=user.warmth_shift,
+                feedback_count=user.feedback_count,
+                cold_count=user.cold_count,
+                hot_count=user.hot_count,
+            )
+            user_repo.save(updated)
+
+    if expect_city:
+        await message.answer(
+            desc
+            + "\n\nа теперь давай выберем город по умолчанию 🌍\n"
+              f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
+        )
+        await state.set_state(CityStates.choosing_default)
+    else:
+        await state.clear()
+        await message.answer(
+            desc + "\n\nесли захочешь поменять настройки — заходи в «Настройки».",
+            reply_markup=main_menu_keyboard(),
+        )
 
 
 # --- Функция для выбора фото стиля ---
@@ -371,7 +521,6 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
     return [os.path.join(photos_dir, filename) for filename in chosen]
 
 
-
 # --- Выбор стиля ---
 
 
@@ -379,12 +528,12 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
 @command_router.message(F.text == "Выбрать стиль")
 async def cmd_choose_style(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
-    
+
     with user_repo_ctx() as user_repo:
         user = user_repo.get_user_by_tg_id(user_tg_id)
-    
+
     city = user.city if user is not None else None
-    
+
     if city is None:
         await message.answer(
             "давай сначала выберем город по умолчанию 🌍\n"
@@ -393,7 +542,7 @@ async def cmd_choose_style(message: Message, state: FSMContext) -> None:
         await state.set_state(CityStates.choosing_default)
         await state.update_data(return_to_style=True)
         return
-    
+
     await state.update_data(city=city)
     await message.answer(
         "выбери стиль одежды 👔\n"
@@ -456,14 +605,14 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
     else:
         # отправляем подпись отдельным сообщением
         await message.answer(caption)
-        
+
         # отправляем все фотографии медиа-группой
         media_group = [
             InputMediaPhoto(media=FSInputFile(path))
             for path in photo_paths
         ]
         await message.answer_media_group(media_group)
-        
+
         # отправляем главное меню
         await message.answer(
             "выбери действие:",
@@ -471,4 +620,3 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
         )
 
     await state.clear()
-

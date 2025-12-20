@@ -7,6 +7,16 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from weather_stylist.bot.handlers.commands import command_router
 from weather_stylist.bot.handlers.text_commands import text_router
 from weather_stylist.infra.alerts_scheduler import run_weather_alerts_loop
+import os
+
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 
 logging.basicConfig(
@@ -18,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-bot = Bot(token='8343951267:AAF8Me-frmJ4Jblqczyhb2cFE9_bwIYqGik',
+bot = Bot(token=BOT_TOKEN,
           default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(command_router)
