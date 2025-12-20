@@ -10,8 +10,9 @@ from weather_stylist.ml.features import FEATURE_COLUMNS
 
 
 def main() -> None:
-    root = Path(__file__).parents[1]
-    data_path = root / "data" / "synthetic_feedback.csv"
+    ml_dir = Path(__file__).parent
+    data_dir = ml_dir / 'data'
+    data_path = data_dir / "synthetic_feedback.csv"
 
     if not data_path.exists():
         raise FileNotFoundError(
@@ -44,7 +45,7 @@ def main() -> None:
     print("MAE:", mae)
     print("R^2:", r2)
 
-    model_path = Path(__file__).with_name("comfort_regressor.pkl")
+    model_path = ml_dir / "comfort_regressor.pkl"
     joblib.dump(model, model_path)
     print(f"model saved to {model_path}")
 

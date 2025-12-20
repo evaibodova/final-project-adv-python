@@ -12,11 +12,6 @@ def rule_based_required_warmth(
         will_rain: int,
         thermo_profile: int,
 ) -> float:
-    """
-    простая экспертная функция:
-    по погоде + термопрофилю выдаёт,
-    сколько условных единиц тепла нужно
-    """
 
     t = temp_max
     base = 0.0
@@ -61,12 +56,8 @@ def random_thermo_profile() -> int:
 
 
 def generate_synthetic_dataset(n_samples: int = 5000) -> None:
-    """
-    генерирует synthetic_feedback.csv в weather_stylist/data/
-    """
-
-    root = Path(__file__).parents[1]
-    data_dir = root / "data"
+    ml_dir = Path(__file__).parent
+    data_dir = ml_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = data_dir / "synthetic_feedback.csv"
