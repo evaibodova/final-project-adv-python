@@ -1,3 +1,6 @@
 hse_env/
 bot.log
 .env
+.idea/
+__pycache__/
+*.pyc
