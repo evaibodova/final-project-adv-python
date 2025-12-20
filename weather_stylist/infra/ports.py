@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 class UserRepo(ABC):
     @abstractmethod
     async def get_user_by_tg_id(self, tg_id: int) -> User | None:
-        '''Find user by their telegram id'''
+        """Find user by their telegram id"""
         raise NotImplementedError
 
     @abstractmethod

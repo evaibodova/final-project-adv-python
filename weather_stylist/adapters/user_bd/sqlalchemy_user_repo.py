@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from .bd import UserORM, FeedbackORM
-from weather_stylist.infra.ports import UserRepo, FeedbackRepo
+from ...infra import UserRepo, FeedbackRepo
 from ...models import User, FeedbackRecord
 
 
