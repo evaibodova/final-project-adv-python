@@ -1,0 +1,12 @@
+hse_env/
+
+bot.log
+.env
+.idea/
+
+__pycache__/
+*.pyc
+*.pyo
+nohup.out
+
+*.db
