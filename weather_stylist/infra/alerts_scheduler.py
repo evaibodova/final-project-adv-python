@@ -7,7 +7,6 @@ from aiogram import Bot
 
 from weather_stylist.models import User
 from weather_stylist.adapters.weather_api.openweather_client import get_two_days_forecast
-from sqlalchemy.orm import Session
 from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
 
@@ -43,7 +42,7 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
     msgs: list[str] = []
 
     for h in today.hourly:
-        # h.hour – час по локальному времени, который мы уже парсим в openweather_client
+        # h.hour – час по локальному времени
         if h.hour <= current_hour:
             continue
         if h.hour > current_hour + 6:
@@ -59,7 +58,7 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
             f"если ещё не вышел(а), подумай про зонт или капюшон."
         )
 
-    # 1) резкое похолодание / потепление
+    # резкое похолодание / потепление
     delta = tomorrow.max_temp - today.max_temp
 
     if delta <= -TEMP_JUMP:
@@ -77,14 +76,14 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
             f"можно будет снять лишние слои."
         )
 
-    # 2) сильный ветер
+    # сильный ветер
     if tomorrow.wind_max >= STRONG_WIND and today.wind_max < STRONG_WIND:
         msgs.append(
             f"завтра в {city} обещают сильный ветер до {round(tomorrow.wind_max)} м/с 🌬️\n"
             f"лучше взять что-нибудь с капюшоном и не брать зонт-трость."
         )
 
-    # 3) дождь завтра, а сегодня сухо
+    # дождь завтра, сегодня сухо
     if not today.will_rain and tomorrow.will_rain:
         msgs.append(
             f"сегодня ещё сухо, но завтра в {city} обещают дождь ☔️\n"
@@ -105,22 +104,15 @@ async def run_weather_alerts_loop(bot: Bot, interval_hours: int = 6) -> None:
     """
     while True:
         try:
-            # создаём сессию к базе
-            session: Session = AsyncSessionLocal()
+            async with AsyncSessionLocal() as session:
 
-            user_repo = SqlAlchemyUserRepo(session)
-            users: list[User] = user_repo.get_all_users()
+                user_repo = SqlAlchemyUserRepo(session)
+                users: list[User] = await user_repo.get_all_users()
 
-            for user in users:
-                await check_user_weather_change(bot, user)
+                for user in users:
+                    await check_user_weather_change(bot, user)
 
         except Exception as e:
             logger.error("error in alerts loop: %s", e)
-
-        finally:
-            try:
-                session.close()
-            except Exception:
-                pass
 
         await asyncio.sleep(interval_hours * 3600)
