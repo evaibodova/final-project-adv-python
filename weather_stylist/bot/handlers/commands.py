@@ -25,6 +25,22 @@ from weather_stylist.infra.config import DEFAULT_CITY
 
 # --- константы для термопрофиля ---
 
+FB_COLD = "Было холодно"
+FB_OK = "Было нормально"
+FB_HOT = "Было жарко"
+
+
+def feedback_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=FB_COLD)],
+            [KeyboardButton(text=FB_OK)],
+            [KeyboardButton(text=FB_HOT)],
+        ],
+        resize_keyboard=True,
+    )
+
+
 TEXT_COLD = "Я мерзляк"
 TEXT_HOT = "Мне всегда жарко"
 TEXT_NEUTRAL = "У меня нет предпочтений"
@@ -38,12 +54,12 @@ async def user_repo_ctx():
 
 
 class CityStates(StatesGroup):
-    choosing_default = State()   
-    changing_city = State()      
+    choosing_default = State()
+    changing_city = State()
 
 
 class StyleStates(StatesGroup):
-    choosing_style = State()  
+    choosing_style = State()
 
 
 command_router = Router()
@@ -122,6 +138,13 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     async with user_repo_ctx() as user_repo:
         user = await user_repo.get_user_by_tg_id(user_tg_id)
+
+    if user is not None:
+        await message.answer(
+            "А как тебе был прошлый образ? 🧥\n"
+            "Было холодно, жарко или нормально?",
+            reply_markup=feedback_keyboard(),
+        )
 
     # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
     if user is None:
@@ -225,7 +248,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         else:
             user = User(
                 tg_id=existing.tg_id,
-                city=forecast.city,           
+                city=forecast.city,
                 name=existing.name,
                 region=existing.region,
                 thermo_profile=existing.thermo_profile,
@@ -263,6 +286,43 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
     await message.answer(
         summary
         + "\n\nв следующий раз просто жми «Совет на сегодня»."
+    )
+
+
+# --- обновление фидбека
+
+@command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
+async def handle_daily_feedback(message: Message) -> None:
+    user_tg_id = message.from_user.id
+
+    with user_repo_ctx() as user_repo:
+        user = user_repo.get_user_by_tg_id(user_tg_id)
+
+        if user is None:
+            await message.answer(
+                "я ещё ни разу не давала тебе совет по одежде, "
+                "так что пока нечего оценивать 🥺"
+            )
+            return
+
+        user.feedback_count += 1
+
+        text = (message.text or "").strip()
+        if text == FB_COLD:
+            user.cold_count += 1
+            reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать теплее."
+        elif text == FB_HOT:
+            user.hot_count += 1
+            reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать полегче."
+        else:
+            reply = "класс, значит в прошлый раз было примерно нормально 😌"
+
+        # сохраняем обновлённого пользователя в БД
+        user_repo.save(user)
+
+    await message.answer(
+        reply + "\n\nспасибо за обратную связь! ❤️",
+        reply_markup=main_menu_keyboard(),
     )
 
 
