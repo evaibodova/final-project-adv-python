@@ -17,33 +17,10 @@ from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
 from weather_stylist.models import User
 
-from contextlib import contextmanager
-from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
 
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
-
-
-@contextmanager
-def user_repo_ctx():
-    session: Session = AsyncSessionLocal()
-    try:
-        repo = SqlAlchemyUserRepo(session)
-        yield repo
-    finally:
-        session.close()
-
-
-class CityStates(StatesGroup):
-    choosing_default = State()   # первый выбор города
-    changing_city = State()      # смена города
-
-
-class StyleStates(StatesGroup):
-    choosing_style = State()     # выбор стиля одежды
-
-
-command_router = Router()
 
 
 # --- константы для термопрофиля ---
@@ -53,23 +30,20 @@ TEXT_HOT = "Мне всегда жарко"
 TEXT_NEUTRAL = "У меня нет предпочтений"
 
 
-@contextmanager
-def user_repo_ctx():
-    session: Session = AsyncSessionLocal()
-    try:
+@asynccontextmanager
+async def user_repo_ctx():
+    async with AsyncSessionLocal() as session:
         repo = SqlAlchemyUserRepo(session)
         yield repo
-    finally:
-        session.close()
 
 
 class CityStates(StatesGroup):
-    choosing_default = State()   # первый выбор города
-    changing_city = State()      # смена города
+    choosing_default = State()   
+    changing_city = State()      
 
 
 class StyleStates(StatesGroup):
-    choosing_style = State()     # выбор стиля одежды
+    choosing_style = State()  
 
 
 command_router = Router()
@@ -146,8 +120,8 @@ async def cmd_help(message: Message) -> None:
 async def cmd_today(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
 
-    with user_repo_ctx() as user_repo:
-        user = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
 
     # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
     if user is None:
@@ -231,8 +205,8 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
     thermo_from_state = data_state.get("thermo_profile")
     return_to_style = data_state.get("return_to_style", False)
 
-    with user_repo_ctx() as user_repo:
-        existing = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
         if existing is None:
             thermo_value = int(
@@ -251,7 +225,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         else:
             user = User(
                 tg_id=existing.tg_id,
-                city=forecast.city,           # обновили город
+                city=forecast.city,           
                 name=existing.name,
                 region=existing.region,
                 thermo_profile=existing.thermo_profile,
@@ -261,9 +235,8 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
                 hot_count=existing.hot_count,
             )
 
-        user_repo.save(user)
+        await user_repo.save(user)
 
-    # если мы пришли сюда из "Выбрать стиль"
     if return_to_style:
         await state.update_data(city=forecast.city, return_to_style=False)
         await message.answer(
@@ -276,7 +249,6 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     await state.clear()
 
-    # сразу же даём совет на сегодня
     summary = (
         f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
         f"сегодня от {round(forecast.min_temp)}°C до {round(forecast.max_temp)}°C, "
@@ -329,8 +301,8 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
     user_name = message.from_user.full_name
 
-    with user_repo_ctx() as user_repo:
-        existing = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
         if existing is None:
             user = User(
@@ -357,7 +329,7 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
                 hot_count=existing.hot_count,
             )
 
-        user_repo.save(user)
+        await user_repo.save(user)
 
     await state.clear()
 
@@ -375,8 +347,8 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
 async def cmd_settings(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
 
-    with user_repo_ctx() as user_repo:
-        user = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
 
     if user is None:
         await state.update_data(expect_city_after_thermo=False)
@@ -422,16 +394,13 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     expect_city = data.get("expect_city_after_thermo", False)
 
-    with user_repo_ctx() as user_repo:
-        user = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
 
         if user is None:
             if expect_city:
-                # первый заход через /today: сохраним выбор во временное состояние,
-                # а пользователя создадим после выбора города в process_first_city
                 await state.update_data(thermo_profile=value)
             else:
-                # пользователь пришёл через /settings — создаём запись в БД без города
                 user = User(
                     tg_id=user_tg_id,
                     city=None,
@@ -443,7 +412,7 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
                     cold_count=0,
                     hot_count=0,
                 )
-                user_repo.save(user)
+                await user_repo.save(user)
         else:
             updated = User(
                 tg_id=user.tg_id,
@@ -456,7 +425,7 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
                 cold_count=user.cold_count,
                 hot_count=user.hot_count,
             )
-            user_repo.save(updated)
+            await user_repo.save(updated)
 
     if expect_city:
         await message.answer(
@@ -491,7 +460,6 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
     if style_folder is None:
         return []
 
-    # выбор подходящей подпапки по температуре
     if max_temp <= 5:
         subfolder = "photos_winter_temp"
     elif max_temp <= 20:
@@ -529,8 +497,8 @@ def get_style_photo_paths(style_key: str, max_temp: float, count: int = 3) -> li
 async def cmd_choose_style(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
 
-    with user_repo_ctx() as user_repo:
-        user = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
 
     city = user.city if user is not None else None
 
@@ -583,8 +551,8 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
 
     user_tg_id = message.from_user.id
     if city is None:
-        with user_repo_ctx() as user_repo:
-            user = user_repo.get_user_by_tg_id(user_tg_id)
+        async with user_repo_ctx() as user_repo:
+            user = await user_repo.get_user_by_tg_id(user_tg_id)
         city = user.city if user is not None else DEFAULT_CITY
 
     forecast = await get_forecast_for_city(city)
@@ -603,17 +571,14 @@ async def process_style_choice(message: Message, state: FSMContext) -> None:
             reply_markup=main_menu_keyboard(),
         )
     else:
-        # отправляем подпись отдельным сообщением
         await message.answer(caption)
 
-        # отправляем все фотографии медиа-группой
         media_group = [
             InputMediaPhoto(media=FSInputFile(path))
             for path in photo_paths
         ]
         await message.answer_media_group(media_group)
 
-        # отправляем главное меню
         await message.answer(
             "выбери действие:",
             reply_markup=main_menu_keyboard(),
