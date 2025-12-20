@@ -1,8 +1,0 @@
-{
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
-    "black-formatter.interpreter": [
-        "/home/eiwa/hse_env/bin/python"
-    ]
-}
