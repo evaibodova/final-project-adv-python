@@ -1,4 +1,6 @@
 from datetime import datetime
+import os
+from pathlib import Path
 
 from sqlalchemy import (
     create_engine,
@@ -9,31 +11,32 @@ from sqlalchemy import (
     Boolean,
     ForeignKey
 )
+
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
 )
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     create_async_engine,
     async_sessionmaker,
 )
-from pathlib import Path
 
 
 class Base(DeclarativeBase):
     pass
 
 
-DB_PATH = Path(__file__).parent / "weather_stylist.db"
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, future=True)
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_DB_PATH = BASE_DIR / "weather_stylist.db"
 
-async_engine = create_async_engine(
-    f"sqlite+aiosqlite:///{DB_PATH}",
-    echo=False,
-    future=True,
-)
+SYNC_DB_URL = os.getenv("DATABASE_URL_SYNC", f"sqlite:///{DEFAULT_DB_PATH}")
+ASYNC_DB_URL = os.getenv("DATABASE_URL_ASYNC", f"sqlite+aiosqlite:///{DEFAULT_DB_PATH}")
+
+engine = create_engine(SYNC_DB_URL, echo=False, future=True)
+async_engine = create_async_engine(ASYNC_DB_URL, echo=False, future=True)
 
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
