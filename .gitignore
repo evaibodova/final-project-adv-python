@@ -12,3 +12,4 @@ nohup.out
 *.db
 
 .vscode/
+.DS_Store
