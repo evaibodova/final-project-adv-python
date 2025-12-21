@@ -4,6 +4,7 @@ from typing import List
 
 @dataclass
 class Outfit:
+    bottom: str
     base: str  # низ
     mid: str  # средний слой
     outer: str  # верхняя одежда
