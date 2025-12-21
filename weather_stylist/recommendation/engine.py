@@ -6,13 +6,23 @@ from weather_stylist.models.weather import DayForecast
 from weather_stylist.models.outfit import Outfit, OutfitAdvice
 
 ITEM_WARMTH = {
+    # низ
+    "shorts": 1.0,
+    "short_skirt": 0.0,
+    "long_skirt": 1.5,
+    "trousers": 2.0,
+    "jeans": 3.0,
+    "warm_trousers": 4.0,
+
     # базовый слой
+    "top": 0.0,
     "tshirt": 1.0,
     "longsleeve": 1.5,
     "thermal": 2.0,
 
     # средний слой
     "none_mid": 0.0,
+    "shirt": 1.0,
     "hoodie": 2.0,
     "sweater": 3.0,
 
@@ -24,18 +34,24 @@ ITEM_WARMTH = {
 
     # аксессуары
     "hat": 0.5,
+    "tights": 1.0,
     "scarf": 0.5,
     "gloves": 0.5,
 }
 
-BASE_OPTIONS = ["tshirt", "longsleeve", "thermal"]
-MID_OPTIONS = ["none_mid", "hoodie", "sweater"]
+BOTTOM = ["shorts", "short_skirt", "long_skirt",
+          "trousers", "jeans", "warm_trousers"]
+BASE_OPTIONS = ["tshirt", "longsleeve", "thermal", "top"]
+MID_OPTIONS = ["none_mid", "hoodie", "sweater", "shirt"]
 OUTER_OPTIONS = ["none_outer", "light_jacket", "coat", "winter_jacket"]
 ACCESSORY_OPTIONS: List[List[str]] = [
     [],
     ["hat"],
+    ["tights"],
+    ["hat", "tights"]
     ["hat", "scarf"],
-    ["hat", "scarf", "gloves"],
+    ["hat", "scarf", "tights"],
+    ["hat", "scarf", "gloves", "tights"],
 ]
 
 
@@ -105,6 +121,8 @@ def pick_outfit_by_index(forecast: DayForecast, user: User, target_warmth: float
 
 def render_outfit_text(forecast: DayForecast, user: User, outfit: Outfit) -> str:
     parts: List[str] = []
+
+    # низ
 
     # база
     if outfit.base == "tshirt":

@@ -22,6 +22,9 @@ from contextlib import asynccontextmanager
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
 from weather_stylist.infra.config import DEFAULT_CITY
 
+from weather_stylist.recommendation.engine import build_today_advice
+from weather_stylist.ml.online_shift import update_warmth_shift
+
 
 # --- константы для термопрофиля ---
 
@@ -60,6 +63,10 @@ class CityStates(StatesGroup):
 
 class StyleStates(StatesGroup):
     choosing_style = State()
+
+
+class FeedbackStates(StatesGroup):
+    waiting_for_feedback_then_today = State()
 
 
 command_router = Router()
@@ -108,7 +115,7 @@ def style_choice_keyboard() -> ReplyKeyboardMarkup:
 async def cmd_start(message: Message) -> None:
     await message.answer(
         f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
-        "я бот-стилист по погоде: подсказываю, что надеть на весь день 🌦🧥. Нажми /help чтобы увидеть, что я могу)",
+        "я бот-стилист по погоде: подсказываю, что надеть на весь день 🌦🧥. Нажми Прогноз на сегодня, чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -119,7 +126,6 @@ async def cmd_start(message: Message) -> None:
 @command_router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(
-        "я пока в режиме разработки.\n\n"
         "доступные команды:\n"
         "/today – совет на сегодня\n"
         "/change_city – сменить город\n"
@@ -168,38 +174,18 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         return
 
     # 3. и термопрофиль, и город уже есть — даём совет
+        # город уже известен
     forecast = await get_forecast_for_city(city)
 
-    summary = (
-        f"сегодня в {forecast.city}: "
-        f"от {round(forecast.min_temp)}°C до {round(forecast.max_temp)}°C, "
-        f"ветер до {round(forecast.wind_max)} м/с"
-    )
-
-    if forecast.will_rain:
-        summary += ", возможен дождь ☔️"
-    else:
-        summary += ", дождя не ожидается"
-
-    # простая заглушка по одежде — сюда позже приедет ваш engine
-    if forecast.max_temp < 0:
-        outfit = "надень тёплые штаны, свитер, шарф и зимнюю куртку"
-    elif forecast.max_temp < 8:
-        outfit = "надень джинсы, худи и тёплую куртку"
-    elif forecast.max_temp < 16:
-        outfit = "надень джинсы и лёгкую куртку или ветровку"
-    else:
-        outfit = "можно лёгкую одежду: футболка и брюки/шорты"
-
-    if forecast.will_rain:
-        outfit += ", и обязательно возьми зонт"
+    # вызываем наш engine, который уже учитывает термопрофиль и фидбеки
+    advice = build_today_advice(forecast, user)
 
     footer = (
         f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
-        "если хочешь сменить — нажми «Изменить город» или команду /change_city."
+        "если хочешь сменить — нажми «Сменить город» или команду /change_city."
     )
 
-    await message.answer(summary + "\n\n" + outfit + footer)
+    await message.answer(advice.text + footer)
 
 
 # --- первый выбор города ---
@@ -290,13 +276,12 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
 
 # --- обновление фидбека
-
 @command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
 async def handle_daily_feedback(message: Message) -> None:
     user_tg_id = message.from_user.id
 
-    with user_repo_ctx() as user_repo:
-        user = user_repo.get_user_by_tg_id(user_tg_id)
+    async with user_repo_ctx() as user_repo:
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
 
         if user is None:
             await message.answer(
@@ -305,20 +290,20 @@ async def handle_daily_feedback(message: Message) -> None:
             )
             return
 
-        user.feedback_count += 1
-
         text = (message.text or "").strip()
         if text == FB_COLD:
-            user.cold_count += 1
+            label = -1
             reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать теплее."
         elif text == FB_HOT:
-            user.hot_count += 1
+            label = 1
             reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать полегче."
         else:
+            label = 0
             reply = "класс, значит в прошлый раз было примерно нормально 😌"
 
-        # сохраняем обновлённого пользователя в БД
-        user_repo.save(user)
+        # тут обновляется: feedback_count, cold/hot_count, warmth_shift
+        updated = update_warmth_shift(user, label)
+        await user_repo.save(updated)
 
     await message.answer(
         reply + "\n\nспасибо за обратную связь! ❤️",
@@ -332,6 +317,7 @@ async def handle_daily_feedback(message: Message) -> None:
 @command_router.message(Command("change_city"))
 @command_router.message(F.text == "Изменить город")
 async def cmd_change_city(message: Message, state: FSMContext) -> None:
+
     await message.answer(
         "на какой город поменять? 🌍\n"
         "просто напиши его названием."
