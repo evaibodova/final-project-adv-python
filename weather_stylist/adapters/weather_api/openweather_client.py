@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from typing import List
 
 import aiohttp
-
-from weather_stylist.infra.config import WEATHERAPI_KEY, DEFAULT_CITY
+import os
 
 
 @dataclass
@@ -26,6 +25,9 @@ class DayForecast:
 
 
 BASE_URL = "https://api.weatherapi.com/v1/forecast.json"
+
+WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY")
+DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 
 
 async def get_forecast_for_city(city: str | None = None) -> DayForecast:

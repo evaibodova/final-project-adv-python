@@ -20,10 +20,11 @@ from weather_stylist.models import User
 from contextlib import asynccontextmanager
 
 from weather_stylist.adapters.weather_api.openweather_client import get_forecast_for_city
-from weather_stylist.infra.config import DEFAULT_CITY
 
 from weather_stylist.recommendation.engine import build_today_advice
 from weather_stylist.ml.online_shift import update_warmth_shift
+
+DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 
 
 # --- константы для термопрофиля ---

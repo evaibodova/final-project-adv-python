@@ -1,2 +1,0 @@
-WEATHERAPI_KEY = "9208b4e1904f4efc9c4230908251912" #API сервиса погоды
-DEFAULT_CITY = "Moscow"
