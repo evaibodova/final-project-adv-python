@@ -26,6 +26,12 @@ class DayForecast:
 
 BASE_URL = "https://api.weatherapi.com/v1/forecast.json"
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 WEATHERAPI_KEY = os.getenv("WEATHERAPI_KEY")
 DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 

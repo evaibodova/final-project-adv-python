@@ -14,7 +14,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  
+    pass
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
