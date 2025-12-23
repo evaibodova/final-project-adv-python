@@ -5,6 +5,45 @@ from .bd import UserORM, FeedbackORM
 from ...infra import UserRepo, FeedbackRepo
 from ...models import User, FeedbackRecord
 
+def user_from_orm(orm: UserORM) -> User:
+    return User(
+        tg_id=orm.tg_id,
+        city=orm.city,
+        name=orm.name,
+        region=orm.region,
+        thermo_profile=orm.thermo_profile,
+        warmth_shift=orm.warmth_shift,
+        feedback_count=orm.feedback_count,
+        cold_count=orm.cold_count,
+        hot_count=orm.hot_count,
+    )
+
+
+def feedback_from_orm(fb: FeedbackORM) -> FeedbackRecord:
+    return FeedbackRecord(
+        user_tg_id=fb.user_tg_id,
+        created_at=fb.created_at,
+        temp_min=float(fb.temp_min),
+        temp_max=float(fb.temp_max),
+        wind_max=float(fb.wind_max),
+        will_rain=fb.will_rain,
+        thermo_profile=fb.thermo_profile,
+        outfit_code=fb.outfit_code,
+        label=fb.label,
+    )
+    
+def feedback_orm_from_record(record: FeedbackRecord) -> FeedbackORM:
+    return FeedbackORM(
+        user_tg_id=record.user_tg_id,
+        created_at=record.created_at,
+        temp_min=record.temp_min,
+        temp_max=record.temp_max,
+        wind_max=record.wind_max,
+        will_rain=record.will_rain,
+        thermo_profile=record.thermo_profile,
+        outfit_code=record.outfit_code,
+        label=record.label,
+    )
 
 class SqlAlchemyUserRepo(UserRepo):
     def __init__(self, session: AsyncSession):
@@ -19,34 +58,14 @@ class SqlAlchemyUserRepo(UserRepo):
         if orm_user is None:
             return None
 
-        return User(
-            tg_id=orm_user.tg_id,
-            city=orm_user.city,
-            name=orm_user.name,
-            region=orm_user.region,
-            thermo_profile=orm_user.thermo_profile,
-            warmth_shift=orm_user.warmth_shift,
-            feedback_count=orm_user.feedback_count,
-            cold_count=orm_user.cold_count,
-            hot_count=orm_user.hot_count
-        )
+        return user_from_orm(orm_user)
 
     async def get_all_users(self) -> list[User]:
         result = await self.session.execute(select(UserORM))
         orm_users: list[UserORM] = list(result.scalars().all())
 
         return [
-            User(
-                tg_id=orm_user.tg_id,
-                city=orm_user.city,
-                name=orm_user.name,
-                region=orm_user.region,
-                thermo_profile=orm_user.thermo_profile,
-                warmth_shift=orm_user.warmth_shift,
-                feedback_count=orm_user.feedback_count,
-                cold_count=orm_user.cold_count,
-                hot_count=orm_user.hot_count
-            ) for orm_user in orm_users
+            user_from_orm(orm_user) for orm_user in orm_users
         ]
 
     async def save(self, user: User) -> User:
@@ -80,17 +99,7 @@ class SqlAlchemyUserRepo(UserRepo):
         await self.session.commit()
         await self.session.refresh(orm_user)
 
-        return User(
-            tg_id=orm_user.tg_id,
-            city=orm_user.city,
-            name=orm_user.name,
-            region=orm_user.region,
-            thermo_profile=orm_user.thermo_profile,
-            warmth_shift=orm_user.warmth_shift,
-            feedback_count=orm_user.feedback_count,
-            cold_count=orm_user.cold_count,
-            hot_count=orm_user.hot_count,
-        )
+        return user_from_orm(orm_user)
 
 
 class SqlAlchemyFeedbackRepo(FeedbackRepo):
@@ -98,17 +107,7 @@ class SqlAlchemyFeedbackRepo(FeedbackRepo):
         self.session = session
 
     async def save(self, record: FeedbackRecord) -> FeedbackRecord:
-        orm_fb = FeedbackORM(
-            user_tg_id=record.user_tg_id,
-            created_at=record.created_at,
-            temp_min=record.temp_min,
-            temp_max=record.temp_max,
-            wind_max=record.wind_max,
-            will_rain=record.will_rain,
-            thermo_profile=record.thermo_profile,
-            outfit_code=record.outfit_code,
-            label=record.label,
-        )
+        orm_fb = feedback_orm_from_record(record)
 
         self.session.add(orm_fb)
         await self.session.commit()
@@ -121,16 +120,5 @@ class SqlAlchemyFeedbackRepo(FeedbackRepo):
         orm_records = result.scalars().all()
 
         return [
-            FeedbackRecord(
-                user_tg_id=fb.user_tg_id,
-                created_at=fb.created_at,
-                temp_min=float(fb.temp_min),
-                temp_max=float(fb.temp_max),
-                wind_max=float(fb.wind_max),
-                will_rain=fb.will_rain,
-                thermo_profile=fb.thermo_profile,
-                outfit_code=fb.outfit_code,
-                label=fb.label,
-            )
-            for fb in orm_records
+            feedback_from_orm(orm_record) for orm_record in orm_records
         ]
