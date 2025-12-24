@@ -1,5 +1,6 @@
 from typing import Any, Dict, List
 from ...models import HourForecast, DayForecast
+from ...infra import CityNotFoundError, WeatherAPIError
 import aiohttp
 import os
 
@@ -31,7 +32,7 @@ def ensure_api_key() -> str:
     if not WEATHERAPI_KEY:
         raise RuntimeError("WEATHERAPI_KEY is not set in environment")
     return WEATHERAPI_KEY
- 
+
 
 def build_params(city: str, days: int) -> Dict[str, str | int]:
     return {
@@ -42,7 +43,8 @@ def build_params(city: str, days: int) -> Dict[str, str | int]:
         "alerts": "no",
         "lang": "ru",
     }
-    
+
+
 async def fetch_forecast_json(city: str | None, days: int) -> Dict[str, Any]:
     """JSON для n дней"""
     resolved_city: str = ensure_city(city)
@@ -53,7 +55,15 @@ async def fetch_forecast_json(city: str | None, days: int) -> Dict[str, Any]:
             data: Dict[str, Any] = await resp.json()
 
     if "error" in data:
-        raise ValueError(data["error"].get("message", "weather api error"))
+        err = data["error"]
+        msg = err.get("message", "weather api error")
+        code = err.get("code")
+
+        # код 1006 у WeatherAPI — "No matching location found."
+        if code == 1006 or "No matching location" in msg:
+            raise CityNotFoundError(msg)
+
+        raise WeatherAPIError(msg)
 
     return data
 
@@ -105,24 +115,26 @@ def parse_day_block(location: str, day_block: Dict[str, Any]) -> DayForecast:
 
 # основные функции форкаста
 
+
 async def get_forecast_for_city(city: str | None = None) -> DayForecast:
     """
     Получаем прогноз на 1 день для города через WeatherAPI и
     приводим к удобной структуре DayForecast.
     """
     data: Dict[str, Any] = await fetch_forecast_json(city, days=1)
-    
+
     location: str = data["location"]["name"]
     day_block: Dict[str, Any] = data["forecast"]["forecastday"][0]
-    
+
     return parse_day_block(location, day_block)
+
 
 async def get_two_days_forecast(city: str | None = None) -> List[DayForecast]:
     data: Dict[str, Any] = await fetch_forecast_json(city, days=2)
-    
+
     location: str = data["location"]["name"]
     forecast_days: List[Dict[str, Any]] = data["forecast"]["forecastday"]
-    
+
     result: List[DayForecast] = []
 
     for day_block in forecast_days[:2]:

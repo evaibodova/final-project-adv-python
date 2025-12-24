@@ -25,6 +25,14 @@ from weather_stylist.adapters.weather_api.openweather_client import get_forecast
 from weather_stylist.recommendation.engine import build_today_advice
 from weather_stylist.ml.online_shift import update_warmth_shift
 
+from ...infra import (
+    CityNotFoundError,
+    WeatherAPIError,
+    ModelError,
+    ModelNotReadyError,
+)
+
+
 DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 
 
@@ -171,6 +179,32 @@ async def cmd_help(message: Message) -> None:
 # --- Совет на сегодня ---
 
 
+# техническое
+
+async def reply_city_not_found(message: Message) -> None:
+    await message.answer(
+        "не смог найти такой город 😿\n"
+        "попробуй ещё раз, например: Омск или Prague."
+    )
+
+
+async def reply_weather_unavailable(message: Message) -> None:
+    await message.answer(
+        "сейчас не получается получить данные о погоде 🥺\n"
+        "скорее всего, проблемы с внешним сервисом.\n"
+        "попробуй ещё раз чуть позже."
+    )
+
+
+async def reply_model_not_ready(message: Message) -> None:
+    await message.answer(
+        "я ещё учусь подбирать образы и временно не могу дать совет 🧠✨\n"
+        "попробуй немного позже, когда модель обновится."
+    )
+
+# основные команды
+
+
 @command_router.message(Command("today"))
 @command_router.message(F.text == "Совет на сегодня")
 async def cmd_today(message: Message, state: FSMContext) -> None:
@@ -186,31 +220,39 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
             reply_markup=feedback_keyboard(),
         )
 
-    # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
     if user is None:
-        await state.update_data(expect_city_after_thermo=True)
-        await message.answer(
-            "давай познакомимся! \n"
-            "как ты обычно ощущаешь погоду? 🧊🔥",
-            reply_markup=thermo_choice_keyboard(),
-        )
+        ...
         return
 
     city = user.city
 
-    # 2. пользователь есть, но города ещё нет — просим город
     if not city:
-        await message.answer(
-            "давай выберем город по умолчанию 🌍\n"
-            f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
-        )
-        await state.set_state(CityStates.choosing_default)
+        ...
         return
 
-    # 3. и термопрофиль, и город уже есть — даём совет, город уже известен
-    forecast = await get_forecast_for_city(city)
+    # 3. город и профиль есть — даём совет
+    try:
+        forecast = await get_forecast_for_city(city)
+    except CityNotFoundError:
+        # до этого город был валидным, но вдруг API больше его не знает
+        await reply_city_not_found(message)
+        return
+    except WeatherAPIError:
+        await reply_weather_unavailable(message)
+        return
 
-    advice = build_today_advice(forecast, user)
+    try:
+        advice = build_today_advice(forecast, user)
+    except ModelNotReadyError:
+        await reply_model_not_ready(message)
+        return
+    except ModelError:
+        # что-то сломалось в ML, но не критично — просто скажем, что не можем
+        await message.answer(
+            "у меня сейчас не получается подобрать персональный образ 🧵\n"
+            "попробуй ещё раз немного позже."
+        )
+        return
 
     footer = (
         f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
@@ -218,7 +260,6 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     )
 
     await message.answer(advice.text + footer)
-
 
 # --- первый выбор города ---
 
@@ -232,11 +273,11 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     try:
         forecast = await get_forecast_for_city(raw_city)
-    except Exception:
-        await message.answer(
-            "не смог найти такой город 😿\n"
-            "попробуй ещё раз, например: Омск или Prague."
-        )
+    except CityNotFoundError:
+        await reply_city_not_found(message)
+        return
+    except WeatherAPIError:
+        await reply_weather_unavailable(message)
         return
 
     user_tg_id = message.from_user.id
@@ -347,13 +388,12 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
 
     try:
         forecast = await get_forecast_for_city(raw_city)
-    except Exception:
-        await message.answer(
-            "я не нашел такой город 😢\n"
-            "проверь написание и попробуй снова.\n"
-            "если это очень маленький населённый пункт, "
-            "попробуй ближайший крупный город."
-        )
+    except CityNotFoundError:
+        await reply_city_not_found(message)
+        await state.clear()
+        return
+    except WeatherAPIError:
+        await reply_weather_unavailable(message)
         await state.clear()
         return
 
