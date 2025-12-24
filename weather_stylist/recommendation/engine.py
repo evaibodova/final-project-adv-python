@@ -11,11 +11,15 @@ from weather_stylist.recommendation.outfit_catalog import ClothingItem, ITEMS
 
 ITEMS_BY_CODE: Dict[str, ClothingItem] = {it.code: it for it in ITEMS}
 
-BOTTOM_ITEMS: List[ClothingItem] = [it for it in ITEMS if it.category == "bottom"]
+BOTTOM_ITEMS: List[ClothingItem] = [
+    it for it in ITEMS if it.category == "bottom"]
 MID_ITEMS: List[ClothingItem] = [it for it in ITEMS if it.category == "mid"]
-OUTER_ITEMS: List[ClothingItem] = [it for it in ITEMS if it.category == "outer"]
-ACCESSORY_ITEMS: List[ClothingItem] = [it for it in ITEMS if it.category == "accessory"]
-SHOES_ITEMS: List[ClothingItem] = [it for it in ITEMS if it.category == "shoes"]
+OUTER_ITEMS: List[ClothingItem] = [
+    it for it in ITEMS if it.category == "outer"]
+ACCESSORY_ITEMS: List[ClothingItem] = [
+    it for it in ITEMS if it.category == "accessory"]
+SHOES_ITEMS: List[ClothingItem] = [
+    it for it in ITEMS if it.category == "shoes"]
 
 BASE_TOPS: List[ClothingItem] = [it for it in MID_ITEMS if it.warmth <= 1.4]
 MID_TOPS: List[ClothingItem] = [it for it in MID_ITEMS if it.warmth > 1.4]
@@ -55,17 +59,18 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
     """
     t = forecast.max_temp
     base = 0.0
-
+    if t <= -25:
+        base = 20.0
     if t <= -15:
-        base = 7.0
+        base = 15.0
     elif t <= -5:
+        base = 11.0
+    elif t <= 3:
+        base = 7.0
+    elif t <= 10:
         base = 6.0
-    elif t <= +3:
-        base = 5.0
-    elif t <= +10:
+    elif t <= 18:
         base = 4.0
-    elif t <= +18:
-        base = 3.0
     else:
         base = 2.0
 
@@ -81,12 +86,10 @@ def required_warmth(forecast: DayForecast, user: User) -> float:
 
     if user.feedback_count <= 0:
         return base
-
-    try:
-        ml_pred = required_warmth_ml(forecast, user)
-        return 0.5 * base + 0.5 * ml_pred
-    except Exception:
-        return base
+    ml_pred = required_warmth_ml(forecast, user)
+    raw = user.feedback_count / 10
+    cf = min(0.7, max(0.1, raw))
+    return (1 - cf) * base + cf * ml_pred
 
 
 # ---- подбор комплекта по целевому тепло-индексу ----
@@ -300,7 +303,8 @@ def render_outfit_text(
     for code in getattr(outfit, "accessories", []):
         add_title(code)
 
-    clothes_text = ", ".join(parts) if parts else "что-нибудь удобное по погоде"
+    clothes_text = ", ".join(
+        parts) if parts else "что-нибудь удобное по погоде"
 
     forecast_text = (
         f"сегодня в {forecast.city} от {round(forecast.min_temp)}° до "
