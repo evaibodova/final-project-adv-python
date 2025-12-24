@@ -174,6 +174,7 @@ async def cmd_help(message: Message) -> None:
         "/change_city – сменить город\n"
         "/settings – настройки профиля\n"
         "или пользуйся кнопками внизу ⬇️",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -185,7 +186,8 @@ async def cmd_help(message: Message) -> None:
 async def reply_city_not_found(message: Message) -> None:
     await message.answer(
         "не смог найти такой город 😿\n"
-        "попробуй ещё раз, например: Омск или Prague."
+        "попробуй ещё раз, например: Омск или Prague.",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -193,14 +195,16 @@ async def reply_weather_unavailable(message: Message) -> None:
     await message.answer(
         "сейчас не получается получить данные о погоде 🥺\n"
         "скорее всего, проблемы с внешним сервисом.\n"
-        "попробуй ещё раз чуть позже."
+        "попробуй ещё раз чуть позже.",
+        reply_markup=main_menu_keyboard(),
     )
 
 
 async def reply_model_not_ready(message: Message) -> None:
     await message.answer(
         "я ещё учусь подбирать образы и временно не могу дать совет 🧠✨\n"
-        "попробуй немного позже, когда модель обновится."
+        "попробуй немного позже, когда модель обновится.",
+        reply_markup=main_menu_keyboard(),
     )
 
 # основные команды
@@ -251,7 +255,8 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         # что-то сломалось в ML, но не критично — просто скажем, что не можем
         await message.answer(
             "у меня сейчас не получается подобрать персональный образ 🧵\n"
-            "попробуй ещё раз немного позже."
+            "попробуй ещё раз немного позже.",
+            reply_markup=main_menu_keyboard(),
         )
         return
 
@@ -260,7 +265,10 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         "если хочешь сменить — нажми «Сменить город» или команду /change_city."
     )
 
-    await message.answer(advice.text + footer)
+    await message.answer(
+        advice.text + footer,
+        reply_markup=main_menu_keyboard(),
+    )
 
     await state.update_data(
         last_forecast={
@@ -280,7 +288,10 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 async def process_first_city(message: Message, state: FSMContext) -> None:
     raw_city = (message.text or "").strip()
     if not raw_city:
-        await message.answer("напиши, пожалуйста, название города текстом 🙏")
+        await message.answer(
+            "напиши, пожалуйста, название города текстом 🙏",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     try:
@@ -337,7 +348,8 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         summary
-        + "\n\nв следующий раз просто жми «Совет на сегодня»."
+        + "\n\nв следующий раз просто жми «Совет на сегодня».",
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -351,7 +363,10 @@ async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
     outfit_code = data.get("last_outfit_code")
 
     if not last or not outfit_code:
-        await message.answer("Сначала нажми «Совет на сегодня», потом оцени 🙂")
+        await message.answer(
+            "Сначала нажми «Совет на сегодня», потом оцени 🙂",
+            reply_markup=main_menu_keyboard(),
+        )
         await state.clear()
         return
 
@@ -363,8 +378,10 @@ async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
         if user is None:
             await message.answer(
                 "я ещё ни разу не давала тебе совет по одежде, "
-                "так что пока нечего оценивать 🥺"
+                "так что пока нечего оценивать 🥺",
+                reply_markup=main_menu_keyboard(),
             )
+            await state.clear()
             return
 
         text = (message.text or "").strip()
@@ -420,7 +437,10 @@ async def cmd_change_city(message: Message, state: FSMContext) -> None:
 async def process_change_city(message: Message, state: FSMContext) -> None:
     raw_city = (message.text or "").strip()
     if not raw_city:
-        await message.answer("напиши, пожалуйста, название города.")
+        await message.answer(
+            "напиши, пожалуйста, название города.",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     try:
@@ -452,7 +472,8 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         f"обновил город по умолчанию на {forecast.city} ✅\n"
-        "теперь «Совет на сегодня» будет использовать этот город."
+        "теперь «Совет на сегодня» будет использовать этот город.",
+        reply_markup=main_menu_keyboard(),
     )
 
 # --- настройки термочувствительности ---

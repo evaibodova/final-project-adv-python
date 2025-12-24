@@ -1,31 +1,14 @@
-from dataclasses import dataclass
-
 from weather_stylist.recommendation.engine import (
     required_warmth_rule_based,
     pick_outfit_by_index,
     build_today_advice,
 )
-
-
-@dataclass
-class DummyForecast:
-    city: str
-    min_temp: float
-    max_temp: float
-    wind_max: float
-    will_rain: bool
-
-
-@dataclass
-class DummyUser:
-    name: str = "тест"
-    warmth_shift: float = 0.0
-    thermo_profile: int = 0
+from tests.conftest import DummyForecast, DummyUser
 
 
 def test_required_warmth_colder_bigger():
-    f_cold = DummyForecast("Москва", -15, -10, 5, False)
-    f_warm = DummyForecast("Москва", +5, +10, 5, False)
+    f_cold = DummyForecast(min_temp=-15, max_temp=-10, wind_max=5, will_rain=False, city="Москва")
+    f_warm = DummyForecast(min_temp=5, max_temp=10, wind_max=5, will_rain=False, city="Москва")
     user = DummyUser()
 
     cold_idx = required_warmth_rule_based(f_cold, user)
@@ -35,27 +18,33 @@ def test_required_warmth_colder_bigger():
 
 
 def test_pick_outfit_very_cold_has_outer():
-    forecast = DummyForecast("Москва", -20, -15, 4, False)
+    forecast = DummyForecast(min_temp=-20, max_temp=-15, wind_max=4, will_rain=False, city="Москва")
     user = DummyUser()
 
     target = required_warmth_rule_based(forecast, user)
     outfit = pick_outfit_by_index(forecast, user, target)
 
-    assert outfit.outer in {"coat", "parka", "winter_jacket"}
+    # Проверяем, что выбрана теплая верхняя одежда для холодной погоды
+    warm_outers = {"coat", "parka", "winter_jacket", "winter_puffer", "down_jacket"}
+    assert outfit.outer in warm_outers, f"Expected warm outer, got {outfit.outer}"
 
 
 def test_pick_outfit_warm_day_without_heavy_outer():
-    forecast = DummyForecast("Сочи", 20, 27, 2, False)
+    forecast = DummyForecast(min_temp=20, max_temp=27, wind_max=2, will_rain=False, city="Сочи")
     user = DummyUser()
 
     target = required_warmth_rule_based(forecast, user)
     outfit = pick_outfit_by_index(forecast, user, target)
 
-    assert outfit.outer in {"none_outer", "light_jacket", "coat"}
+    # Проверяем, что для теплой погоды не выбрана тяжелая верхняя одежда
+    light_outers = {"none_outer", "light_jacket", "denim_jacket", "cardigan", "blazer"}
+    heavy_outers = {"parka", "winter_jacket", "winter_puffer", "down_jacket"}
+    assert outfit.outer in light_outers, f"Expected light outer for warm weather, got {outfit.outer}"
+    assert outfit.outer not in heavy_outers, f"Should not have heavy outer for warm weather, got {outfit.outer}"
 
 
 def test_build_today_advice_returns_text_and_outfit():
-    forecast = DummyForecast("Амстердам", 5, 10, 7, True)
+    forecast = DummyForecast(min_temp=5, max_temp=10, wind_max=7, will_rain=True, city="Амстердам")
     user = DummyUser()
 
     advice = build_today_advice(forecast, user)

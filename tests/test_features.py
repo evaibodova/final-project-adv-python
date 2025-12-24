@@ -1,20 +1,5 @@
-from dataclasses import dataclass
-
 from weather_stylist.ml.features import FEATURE_COLUMNS, make_features
-
-
-@dataclass
-class DummyForecast:
-    min_temp: float
-    max_temp: float
-    wind_max: float
-    will_rain: bool
-
-
-@dataclass
-class DummyUser:
-    thermo_profile: int
-    warmth_shift: float
+from tests.conftest import DummyForecast, DummyUser
 
 
 def test_make_features_basic():
