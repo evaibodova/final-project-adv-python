@@ -1,6 +1,7 @@
 import os
 import random
 from typing import Optional
+from datetime import datetime
 
 from aiogram import F, Router, html
 from aiogram.filters import CommandStart, Command
@@ -15,8 +16,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
-from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
-from weather_stylist.models import User
+from weather_stylist.adapters.user_bd import SqlAlchemyUserRepo, SqlAlchemyFeedbackRepo
+from weather_stylist.models import User, FeedbackRecord
 
 from contextlib import asynccontextmanager
 
@@ -261,6 +262,17 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     await message.answer(advice.text + footer)
 
+    await state.update_data(
+        last_forecast={
+            "temp_min": forecast.min_temp,
+            "temp_max": forecast.max_temp,
+            "wind_max": forecast.wind_max,
+            "will_rain": forecast.will_rain,
+        },
+        last_outfit_code=",".join(advice.items),
+    )
+    await state.set_state(FeedbackStates.waiting_for_feedback_then_today)
+
 # --- первый выбор города ---
 
 
@@ -331,12 +343,23 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
 # --- обновление фидбека
 @command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
-async def handle_daily_feedback(message: Message) -> None:
+async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
 
-    async with user_repo_ctx() as user_repo:
-        user = await user_repo.get_user_by_tg_id(user_tg_id)
+    data = await state.get_data()
+    last = data.get("last_forecast")
+    outfit_code = data.get("last_outfit_code")
 
+    if not last or not outfit_code:
+        await message.answer("Сначала нажми «Совет на сегодня», потом оцени 🙂")
+        await state.clear()
+        return
+
+    async with AsyncSessionLocal() as session:
+        user_repo = SqlAlchemyUserRepo(session)
+        fb_repo = SqlAlchemyFeedbackRepo(session)
+
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
         if user is None:
             await message.answer(
                 "я ещё ни разу не давала тебе совет по одежде, "
@@ -355,6 +378,18 @@ async def handle_daily_feedback(message: Message) -> None:
             label = 0
             reply = "круто, значит продолжаем в том же духе, буду советовать одежду среднего теплоощущения 😌"
 
+        await fb_repo.save(FeedbackRecord(
+            user_tg_id=user_tg_id,
+            created_at=datetime.utcnow(),
+            temp_min=float(last["temp_min"]),
+            temp_max=float(last["temp_max"]),
+            wind_max=float(last["wind_max"]),
+            will_rain=bool(last["will_rain"]),
+            thermo_profile=int(user.thermo_profile),
+            outfit_code=str(outfit_code),
+            label=int(label),
+        ))
+
         # тут обновляется: feedback_count, cold/hot_count, warmth_shift
         updated = update_warmth_shift(user, label)
         await user_repo.save(updated)
@@ -363,6 +398,8 @@ async def handle_daily_feedback(message: Message) -> None:
         reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
         reply_markup=main_menu_keyboard(),
     )
+
+    await state.clear()
 
 
 # --- смена города ---
