@@ -24,6 +24,16 @@ from weather_stylist.adapters.weather_api.openweather_client import get_forecast
 from weather_stylist.recommendation.engine import build_today_advice
 from weather_stylist.ml.online_shift import update_warmth_shift
 
+from datetime import datetime
+
+from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
+from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import (
+    SqlAlchemyUserRepo,
+    SqlAlchemyFeedbackRepo,
+)
+from weather_stylist.models import User, FeedbackRecord
+
+
 DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 
 
@@ -115,8 +125,8 @@ def style_choice_keyboard() -> ReplyKeyboardMarkup:
 @command_router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     await message.answer(
-        f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
-        "я бот-стилист по погоде: подсказываю, что надеть на весь день, чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. Нажми «Совет на сегодня», чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
+        f"Привет, {html.bold(message.from_user.full_name)} 🦜!\n\n"
+        "я бот-стилист по погоде 🧸: подсказываю, что надеть на весь день, чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. Нажми «Совет на сегодня», чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -281,33 +291,61 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 async def handle_daily_feedback(message: Message) -> None:
     user_tg_id = message.from_user.id
 
-    async with user_repo_ctx() as user_repo:
-        user = await user_repo.get_user_by_tg_id(user_tg_id)
+    async with AsyncSessionLocal() as session:
+        user_repo = SqlAlchemyUserRepo(session)
+        fb_repo = SqlAlchemyFeedbackRepo(session)
 
+        user = await user_repo.get_user_by_tg_id(user_tg_id)
         if user is None:
             await message.answer(
                 "я ещё ни разу не давала тебе совет по одежде, "
-                "так что пока нечего оценивать 🥺"
+                "так что пока нечего оценивать 🥺",
+                reply_markup=main_menu_keyboard(),
             )
             return
 
         text = (message.text or "").strip()
         if text == FB_COLD:
             label = -1
-            reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать одежду потеплее."
+            reply = (
+                "поняла: в прошлый раз было холодно ❄️\n"
+                "буду советовать одежду потеплее."
+            )
         elif text == FB_HOT:
             label = 1
-            reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать одежду полегче."
+            reply = (
+                "поняла: в прошлый раз было жарко 🔥\n"
+                "буду советовать одежду полегче."
+            )
         else:
             label = 0
-            reply = "круто, значит продолжаем в том же духе, буду советовать одежду среднего теплоощущения 😌"
+            reply = (
+                "круто, значит продолжаем в том же духе, "
+                "буду советовать одежду среднего теплоощущения 😌"
+            )
 
-        # тут обновляется: feedback_count, cold/hot_count, warmth_shift
-        updated = update_warmth_shift(user, label)
-        await user_repo.save(updated)
+        # сохраняем фидбек в БД
+        fb_record = FeedbackRecord(
+            user_tg_id=user_tg_id,
+            created_at=datetime.utcnow(),
+            temp_min=0.0,
+            temp_max=0.0,
+            wind_max=0.0,
+            will_rain=False,
+            thermo_profile=user.thermo_profile,
+            outfit_code="unknown",
+            label=label,
+        )
+        await fb_repo.save(fb_record)
+
+        # обновляем профиль пользователя (feedback_count, warmth_shift и т.п.)
+        updated_user = update_warmth_shift(user, label)
+        await user_repo.save(updated_user)
 
     await message.answer(
-        reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
+        reply
+        + "\n\nспасибо за обратную связь! ❤️\n"
+          "ты очень помогаешь мне лучше подбирать образы 💗",
         reply_markup=main_menu_keyboard(),
     )
 
