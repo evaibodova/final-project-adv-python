@@ -1,10 +1,8 @@
 import os
 import random
-from typing import Optional
-from datetime import datetime
 
 from aiogram import F, Router, html
-from aiogram.filters import CommandStart, Command, StateFilter
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     KeyboardButton,
@@ -16,8 +14,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
-from weather_stylist.adapters.user_bd import SqlAlchemyUserRepo, SqlAlchemyFeedbackRepo
-from weather_stylist.models import User, FeedbackRecord
+from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
+from weather_stylist.models import User
 
 from contextlib import asynccontextmanager
 
@@ -25,14 +23,6 @@ from weather_stylist.adapters.weather_api.openweather_client import get_forecast
 
 from weather_stylist.recommendation.engine import build_today_advice
 from weather_stylist.ml.online_shift import update_warmth_shift
-
-from ...infra import (
-    CityNotFoundError,
-    WeatherAPIError,
-    ModelError,
-    ModelNotReadyError,
-)
-
 
 DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 
@@ -42,38 +32,6 @@ DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 FB_COLD = "Было холодно"
 FB_OK = "Было нормально"
 FB_HOT = "Было жарко"
-
-
-def build_user_with_city(existing: Optional[User], *, tg_id: int, name: str, city: str, thermo_profile: Optional[int] = None,
-                         ) -> User:
-    if existing is None:
-        return User(
-            tg_id=tg_id,
-            city=city,
-            name=name,
-            region="unknown",
-            thermo_profile=thermo_profile if thermo_profile is not None else 0,
-            warmth_shift=0.0,
-            feedback_count=0,
-            cold_count=0,
-            hot_count=0,
-        )
-
-    return User(
-        tg_id=existing.tg_id,
-        city=city,
-        name=existing.name,
-        region=existing.region,
-        thermo_profile=(
-            existing.thermo_profile
-            if thermo_profile is None
-            else thermo_profile
-        ),
-        warmth_shift=existing.warmth_shift,
-        feedback_count=existing.feedback_count,
-        cold_count=existing.cold_count,
-        hot_count=existing.hot_count,
-    )
 
 
 def feedback_keyboard() -> ReplyKeyboardMarkup:
@@ -127,7 +85,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="Настройки")],
         ],
         resize_keyboard=True,
-        is_persistent=True,
     )
 
 
@@ -175,40 +132,10 @@ async def cmd_help(message: Message) -> None:
         "/change_city – сменить город\n"
         "/settings – настройки профиля\n"
         "или пользуйся кнопками внизу ⬇️",
-        reply_markup=main_menu_keyboard(),
     )
 
 
 # --- Совет на сегодня ---
-
-
-# техническое
-
-async def reply_city_not_found(message: Message) -> None:
-    await message.answer(
-        "не смог найти такой город 😿\n"
-        "попробуй ещё раз, например: Омск или Prague.",
-        reply_markup=main_menu_keyboard(),
-    )
-
-
-async def reply_weather_unavailable(message: Message) -> None:
-    await message.answer(
-        "сейчас не получается получить данные о погоде 🥺\n"
-        "скорее всего, проблемы с внешним сервисом.\n"
-        "попробуй ещё раз чуть позже.",
-        reply_markup=main_menu_keyboard(),
-    )
-
-
-async def reply_model_not_ready(message: Message) -> None:
-    await message.answer(
-        "я ещё учусь подбирать образы и временно не могу дать совет 🧠✨\n"
-        "попробуй немного позже, когда модель обновится.",
-        reply_markup=main_menu_keyboard(),
-    )
-
-# основные команды
 
 
 @command_router.message(Command("today"))
@@ -219,81 +146,48 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     async with user_repo_ctx() as user_repo:
         user = await user_repo.get_user_by_tg_id(user_tg_id)
 
-    if user is None:
+    if user is not None:
         await message.answer(
-            "давай сначала настроимся 🙂\n"
-            "нажми «Настройки» и выбери термопрофиль, а потом город."
+            "А как тебе был прошлый образ?\n"
+            "Было холодно, жарко или нормально?",
+            reply_markup=feedback_keyboard(),
+        )
+
+    # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
+    if user is None:
+        await state.update_data(expect_city_after_thermo=True)
+        await message.answer(
+            "давай познакомимся! \n"
+            "как ты обычно ощущаешь погоду? 🧊🔥",
+            reply_markup=thermo_choice_keyboard(),
         )
         return
 
     city = user.city
+
+    # 2. пользователь есть, но города ещё нет — просим город
     if not city:
         await message.answer(
-            f"давай сначала выберем город по умолчанию 🌍\n"
-            f"напиши город (например: {DEFAULT_CITY})."
+            "давай выберем город по умолчанию 🌍\n"
+            f"напиши, пожалуйста, город текстом (например: {DEFAULT_CITY})."
         )
         await state.set_state(CityStates.choosing_default)
         return
 
-    # --- прогноз
-    try:
-        forecast = await get_forecast_for_city(city)
-    except CityNotFoundError:
-        await reply_city_not_found(message)
-        return
-    except WeatherAPIError:
-        await reply_weather_unavailable(message)
-        return
+    # 3. и термопрофиль, и город уже есть — даём совет
+        # город уже известен
+    forecast = await get_forecast_for_city(city)
 
-    # --- совет
-    try:
-        advice = build_today_advice(forecast, user)
-    except ModelNotReadyError:
-        await reply_model_not_ready(message)
-        return
-    except ModelError:
-        await message.answer(
-            "у меня сейчас не получается подобрать персональный образ 🧵\n"
-            "попробуй ещё раз немного позже.",
-            reply_markup=main_menu_keyboard(),
-        )
-        return
+    # вызываем наш engine, который уже учитывает термопрофиль и фидбеки
+    advice = build_today_advice(forecast, user)
 
     footer = (
         f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
-        "если хочешь сменить — нажми «Изменить город» или команду /change_city."
+        "если хочешь сменить — нажми «Сменить город» или команду /change_city."
     )
 
-    await message.answer(
-        advice.text + footer,
-        reply_markup=main_menu_keyboard(),
-    )
+    await message.answer(advice.text + footer)
 
-    outfit_codes: list[str] = []
-    # базовые части
-    for attr in ("bottom", "base", "mid", "outer"):
-        code = getattr(advice.outfit, attr, None)
-        if code:
-            outfit_codes.append(str(code))
-    # аксессуары
-    for code in (getattr(advice.outfit, "accessories", None) or []):
-        outfit_codes.append(str(code))
-
-    await state.update_data(
-        last_forecast={
-            "temp_min": float(forecast.min_temp),
-            "temp_max": float(forecast.max_temp),
-            "wind_max": float(forecast.wind_max),
-            "will_rain": bool(forecast.will_rain),
-        },
-        last_outfit_code=",".join(outfit_codes),
-    )
-    await state.set_state(FeedbackStates.waiting_for_feedback_then_today)
-
-    await message.answer(
-        "а как тебе образ? было холодно, нормально или жарко?",
-        reply_markup=feedback_keyboard(),
-    )
 
 # --- первый выбор города ---
 
@@ -302,38 +196,54 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 async def process_first_city(message: Message, state: FSMContext) -> None:
     raw_city = (message.text or "").strip()
     if not raw_city:
-        await message.answer(
-            "напиши, пожалуйста, название города текстом 🙏",
-            reply_markup=main_menu_keyboard(),
-        )
+        await message.answer("напиши, пожалуйста, название города текстом 🙏")
         return
 
     try:
         forecast = await get_forecast_for_city(raw_city)
-    except CityNotFoundError:
-        await reply_city_not_found(message)
-        return
-    except WeatherAPIError:
-        await reply_weather_unavailable(message)
+    except Exception:
+        await message.answer(
+            "не смог найти такой город 😿\n"
+            "попробуй ещё раз, например: Омск или Prague."
+        )
         return
 
     user_tg_id = message.from_user.id
     user_name = message.from_user.full_name
 
     data_state = await state.get_data()
-    thermo_from_state: Optional[int] = data_state.get("thermo_profile")
-    return_to_style: bool = data_state.get("return_to_style", False)
+    thermo_from_state = data_state.get("thermo_profile")
+    return_to_style = data_state.get("return_to_style", False)
 
     async with user_repo_ctx() as user_repo:
         existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
-        user = build_user_with_city(
-            existing=existing,
-            tg_id=user_tg_id,
-            name=user_name,
-            city=forecast.city,
-            thermo_profile=thermo_from_state,
-        )
+        if existing is None:
+            thermo_value = int(
+                thermo_from_state) if thermo_from_state is not None else 0
+            user = User(
+                tg_id=user_tg_id,
+                city=forecast.city,
+                name=user_name,
+                region="unknown",
+                thermo_profile=thermo_value,
+                warmth_shift=0.0,
+                feedback_count=0,
+                cold_count=0,
+                hot_count=0,
+            )
+        else:
+            user = User(
+                tg_id=existing.tg_id,
+                city=forecast.city,
+                name=existing.name,
+                region=existing.region,
+                thermo_profile=existing.thermo_profile,
+                warmth_shift=existing.warmth_shift,
+                feedback_count=existing.feedback_count,
+                cold_count=existing.cold_count,
+                hot_count=existing.hot_count,
+            )
 
         await user_repo.save(user)
 
@@ -362,43 +272,23 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         summary
-        + "\n\nв следующий раз просто жми «Совет на сегодня».",
-        reply_markup=main_menu_keyboard(),
+        + "\n\nв следующий раз просто жми «Совет на сегодня»."
     )
 
 
 # --- обновление фидбека
-@command_router.message(
-    StateFilter(FeedbackStates.waiting_for_feedback_then_today),
-    F.text.in_([FB_COLD, FB_OK, FB_HOT])
-)
-async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
+@command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
+async def handle_daily_feedback(message: Message) -> None:
     user_tg_id = message.from_user.id
 
-    data = await state.get_data()
-    last = data.get("last_forecast")
-    outfit_code = data.get("last_outfit_code")
-
-    if not last or not outfit_code:
-        await message.answer(
-            "Сначала нажми «Совет на сегодня», потом оцени 🙂",
-            reply_markup=main_menu_keyboard(),
-        )
-        await state.clear()
-        return
-
-    async with AsyncSessionLocal() as session:
-        user_repo = SqlAlchemyUserRepo(session)
-        fb_repo = SqlAlchemyFeedbackRepo(session)
-
+    async with user_repo_ctx() as user_repo:
         user = await user_repo.get_user_by_tg_id(user_tg_id)
+
         if user is None:
             await message.answer(
                 "я ещё ни разу не давала тебе совет по одежде, "
-                "так что пока нечего оценивать 🥺",
-                reply_markup=main_menu_keyboard(),
+                "так что пока нечего оценивать 🥺"
             )
-            await state.clear()
             return
 
         text = (message.text or "").strip()
@@ -412,31 +302,14 @@ async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
             label = 0
             reply = "круто, значит продолжаем в том же духе, буду советовать одежду среднего теплоощущения 😌"
 
-        await fb_repo.save(FeedbackRecord(
-            user_tg_id=user_tg_id,
-            created_at=datetime.utcnow(),
-            temp_min=float(last["temp_min"]),
-            temp_max=float(last["temp_max"]),
-            wind_max=float(last["wind_max"]),
-            will_rain=bool(last["will_rain"]),
-            thermo_profile=int(user.thermo_profile),
-            outfit_code=str(outfit_code),
-            label=int(label),
-        ))
-
         # тут обновляется: feedback_count, cold/hot_count, warmth_shift
         updated = update_warmth_shift(user, label)
         await user_repo.save(updated)
 
-    # Очищаем состояние перед отправкой ответа, чтобы кнопки главного меню точно показались
-    await state.clear()
-    
     await message.answer(
         reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
         reply_markup=main_menu_keyboard(),
     )
-
-    await state.clear()
 
 
 # --- смена города ---
@@ -457,20 +330,18 @@ async def cmd_change_city(message: Message, state: FSMContext) -> None:
 async def process_change_city(message: Message, state: FSMContext) -> None:
     raw_city = (message.text or "").strip()
     if not raw_city:
-        await message.answer(
-            "напиши, пожалуйста, название города.",
-            reply_markup=main_menu_keyboard(),
-        )
+        await message.answer("напиши, пожалуйста, название города.")
         return
 
     try:
         forecast = await get_forecast_for_city(raw_city)
-    except CityNotFoundError:
-        await reply_city_not_found(message)
-        await state.clear()
-        return
-    except WeatherAPIError:
-        await reply_weather_unavailable(message)
+    except Exception:
+        await message.answer(
+            "я не нашел такой город 😢\n"
+            "проверь написание и попробуй снова.\n"
+            "если это очень маленький населённый пункт, "
+            "попробуй ближайший крупный город."
+        )
         await state.clear()
         return
 
@@ -480,37 +351,42 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     async with user_repo_ctx() as user_repo:
         existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
-        user = build_user_with_city(
-            existing=existing,
-            tg_id=user_tg_id,
-            name=user_name,
-            city=forecast.city,
-        )
+        if existing is None:
+            user = User(
+                tg_id=user_tg_id,
+                city=forecast.city,
+                name=user_name,
+                region="unknown",
+                thermo_profile=0,
+                warmth_shift=0.0,
+                feedback_count=0,
+                cold_count=0,
+                hot_count=0,
+            )
+        else:
+            user = User(
+                tg_id=existing.tg_id,
+                city=forecast.city,
+                name=existing.name,
+                region=existing.region,
+                thermo_profile=existing.thermo_profile,
+                warmth_shift=existing.warmth_shift,
+                feedback_count=existing.feedback_count,
+                cold_count=existing.cold_count,
+                hot_count=existing.hot_count,
+            )
+
         await user_repo.save(user)
 
     await state.clear()
 
     await message.answer(
         f"обновил город по умолчанию на {forecast.city} ✅\n"
-        "теперь «Совет на сегодня» будет использовать этот город.",
-        reply_markup=main_menu_keyboard(),
+        "теперь «Совет на сегодня» будет использовать этот город."
     )
+
 
 # --- настройки термочувствительности ---
-
-
-def build_thermo_profile(user: User, new_value: int) -> User:
-    return User(
-        tg_id=user.tg_id,
-        city=user.city,
-        name=user.name,
-        region=user.region,
-        thermo_profile=new_value,
-        warmth_shift=user.warmth_shift,
-        feedback_count=user.feedback_count,
-        cold_count=user.cold_count,
-        hot_count=user.hot_count,
-    )
 
 
 @command_router.message(Command("settings"))
@@ -585,7 +461,17 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
                 )
                 await user_repo.save(user)
         else:
-            updated = build_thermo_profile(user, value)
+            updated = User(
+                tg_id=user.tg_id,
+                city=user.city,
+                name=user.name,
+                region=user.region,
+                thermo_profile=value,
+                warmth_shift=user.warmth_shift,
+                feedback_count=user.feedback_count,
+                cold_count=user.cold_count,
+                hot_count=user.hot_count,
+            )
             await user_repo.save(updated)
 
     if expect_city:
