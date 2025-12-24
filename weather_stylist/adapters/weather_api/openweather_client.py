@@ -24,13 +24,13 @@ def ensure_city(city: str | None) -> str:
     if city:
         return city
     if not DEFAULT_CITY:
-        raise RuntimeError("DEFAULT_CITY is not set in environment")
+        raise WeatherAPIError("DEFAULT_CITY is not set in environment")
     return DEFAULT_CITY
 
 
 def ensure_api_key() -> str:
     if not WEATHERAPI_KEY:
-        raise RuntimeError("WEATHERAPI_KEY is not set in environment")
+        raise WeatherAPIError("WEATHERAPI_KEY is not set in environment")
     return WEATHERAPI_KEY
 
 
