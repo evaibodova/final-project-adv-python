@@ -1,6 +1,5 @@
 from typing import Any, List
 
-# порядок колонок, в таком же порядке будет обучаться модель
 FEATURE_COLUMNS = [
     "temp_min",
     "temp_max",
