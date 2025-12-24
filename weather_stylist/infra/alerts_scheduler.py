@@ -45,7 +45,7 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
         # h.hour – час по локальному времени
         if h.hour <= current_hour:
             continue
-        if h.hour > current_hour + 6:
+        if h.hour > current_hour + 12:
             continue
 
         if h.will_rain:
@@ -97,7 +97,7 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
     await bot.send_message(chat_id=user.tg_id, text=text)
 
 
-async def run_weather_alerts_loop(bot: Bot, interval_hours: int = 6) -> None:
+async def run_weather_alerts_loop(bot: Bot, interval_hours: int = 12) -> None:
     """
     Фоновый цикл: раз в interval_hours часов пробегаемся по всем пользователям,
     проверяем погоду и при необходимости шлём уведомления.
