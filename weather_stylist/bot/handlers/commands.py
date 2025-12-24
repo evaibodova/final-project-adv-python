@@ -1,5 +1,6 @@
 import os
 import random
+from typing import Optional
 
 from aiogram import F, Router, html
 from aiogram.filters import CommandStart, Command
@@ -32,6 +33,38 @@ DEFAULT_CITY = os.getenv("DEFAULT_CITY")
 FB_COLD = "Было холодно"
 FB_OK = "Было нормально"
 FB_HOT = "Было жарко"
+
+
+def build_user_with_city(existing: Optional[User], *, tg_id: int, name: str, city: str, thermo_profile: Optional[int] = None,
+                         ) -> User:
+    if existing is None:
+        return User(
+            tg_id=tg_id,
+            city=city,
+            name=name,
+            region="unknown",
+            thermo_profile=thermo_profile if thermo_profile is not None else 0,
+            warmth_shift=0.0,
+            feedback_count=0,
+            cold_count=0,
+            hot_count=0,
+        )
+
+    return User(
+        tg_id=existing.tg_id,
+        city=city,
+        name=existing.name,
+        region=existing.region,
+        thermo_profile=(
+            existing.thermo_profile
+            if thermo_profile is None
+            else thermo_profile
+        ),
+        warmth_shift=existing.warmth_shift,
+        feedback_count=existing.feedback_count,
+        cold_count=existing.cold_count,
+        hot_count=existing.hot_count,
+    )
 
 
 def feedback_keyboard() -> ReplyKeyboardMarkup:
@@ -174,11 +207,9 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         await state.set_state(CityStates.choosing_default)
         return
 
-    # 3. и термопрофиль, и город уже есть — даём совет
-        # город уже известен
+    # 3. и термопрофиль, и город уже есть — даём совет, город уже известен
     forecast = await get_forecast_for_city(city)
 
-    # вызываем наш engine, который уже учитывает термопрофиль и фидбеки
     advice = build_today_advice(forecast, user)
 
     footer = (
@@ -212,38 +243,19 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
     user_name = message.from_user.full_name
 
     data_state = await state.get_data()
-    thermo_from_state = data_state.get("thermo_profile")
-    return_to_style = data_state.get("return_to_style", False)
+    thermo_from_state: Optional[int] = data_state.get("thermo_profile")
+    return_to_style: bool = data_state.get("return_to_style", False)
 
     async with user_repo_ctx() as user_repo:
         existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
-        if existing is None:
-            thermo_value = int(
-                thermo_from_state) if thermo_from_state is not None else 0
-            user = User(
-                tg_id=user_tg_id,
-                city=forecast.city,
-                name=user_name,
-                region="unknown",
-                thermo_profile=thermo_value,
-                warmth_shift=0.0,
-                feedback_count=0,
-                cold_count=0,
-                hot_count=0,
-            )
-        else:
-            user = User(
-                tg_id=existing.tg_id,
-                city=forecast.city,
-                name=existing.name,
-                region=existing.region,
-                thermo_profile=existing.thermo_profile,
-                warmth_shift=existing.warmth_shift,
-                feedback_count=existing.feedback_count,
-                cold_count=existing.cold_count,
-                hot_count=existing.hot_count,
-            )
+        user = build_user_with_city(
+            existing=existing,
+            tg_id=user_tg_id,
+            name=user_name,
+            city=forecast.city,
+            thermo_profile=thermo_from_state,
+        )
 
         await user_repo.save(user)
 
@@ -351,31 +363,12 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     async with user_repo_ctx() as user_repo:
         existing = await user_repo.get_user_by_tg_id(user_tg_id)
 
-        if existing is None:
-            user = User(
-                tg_id=user_tg_id,
-                city=forecast.city,
-                name=user_name,
-                region="unknown",
-                thermo_profile=0,
-                warmth_shift=0.0,
-                feedback_count=0,
-                cold_count=0,
-                hot_count=0,
-            )
-        else:
-            user = User(
-                tg_id=existing.tg_id,
-                city=forecast.city,
-                name=existing.name,
-                region=existing.region,
-                thermo_profile=existing.thermo_profile,
-                warmth_shift=existing.warmth_shift,
-                feedback_count=existing.feedback_count,
-                cold_count=existing.cold_count,
-                hot_count=existing.hot_count,
-            )
-
+        user = build_user_with_city(
+            existing=existing,
+            tg_id=user_tg_id,
+            name=user_name,
+            city=forecast.city,
+        )
         await user_repo.save(user)
 
     await state.clear()
@@ -385,8 +378,21 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
         "теперь «Совет на сегодня» будет использовать этот город."
     )
 
-
 # --- настройки термочувствительности ---
+
+
+def build_thermo_profile(user: User, new_value: int) -> User:
+    return User(
+        tg_id=user.tg_id,
+        city=user.city,
+        name=user.name,
+        region=user.region,
+        thermo_profile=new_value,
+        warmth_shift=user.warmth_shift,
+        feedback_count=user.feedback_count,
+        cold_count=user.cold_count,
+        hot_count=user.hot_count,
+    )
 
 
 @command_router.message(Command("settings"))
@@ -461,17 +467,7 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
                 )
                 await user_repo.save(user)
         else:
-            updated = User(
-                tg_id=user.tg_id,
-                city=user.city,
-                name=user.name,
-                region=user.region,
-                thermo_profile=value,
-                warmth_shift=user.warmth_shift,
-                feedback_count=user.feedback_count,
-                cold_count=user.cold_count,
-                hot_count=user.hot_count,
-            )
+            updated = build_thermo_profile(user, value)
             await user_repo.save(updated)
 
     if expect_city:
