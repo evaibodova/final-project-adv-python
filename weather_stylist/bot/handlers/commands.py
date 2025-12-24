@@ -428,6 +428,8 @@ async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
         reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
         reply_markup=main_menu_keyboard(),
     )
+    
+    await state.clear()
 
     await state.clear()
 
