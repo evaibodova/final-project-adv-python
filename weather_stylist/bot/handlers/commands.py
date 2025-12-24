@@ -279,6 +279,25 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         + "\n\nв следующий раз просто жми «Совет на сегодня»."
     )
 
+    await state.clear()
+
+    summary = (
+        f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
+        f"сегодня от {round(forecast.min_temp)}°C до {round(forecast.max_temp)}°C, "
+        f"ветер до {round(forecast.wind_max)} м/с"
+    )
+
+    if forecast.will_rain:
+        summary += ", возможен дождь ☔️"
+    else:
+        summary += ", дождя не ожидается"
+
+    await message.answer(
+        summary
+        + "\n\nв следующий раз просто жми «Совет на сегодня».",
+        reply_markup=main_menu_keyboard(),
+    )
+
 
 # --- обновление фидбека
 
