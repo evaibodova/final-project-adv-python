@@ -1,3 +1,4 @@
+from aiogram.types import FSInputFile
 from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal, UserORM, FeedbackORM
 from sqlalchemy import select
 import os
@@ -118,10 +119,21 @@ def style_choice_keyboard() -> ReplyKeyboardMarkup:
 
 @command_router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
-    await message.answer(
-        photo="mishka_popug.png"
-        f"Привет, {html.bold(message.from_user.full_name)} 🦜!\n\n"
-        "я бот-стилист по погоде 🧸: подсказываю, что надеть на весь день, чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. Нажми «Совет на сегодня», чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
+    handlers_dir = os.path.dirname(__file__)
+    bot_dir = os.path.dirname(handlers_dir)
+    photo_path = os.path.join(bot_dir, "mishka_popug.png")
+
+    photo = FSInputFile("weather_stylist/bot/handlers/mishka_popug.png")
+
+    await message.answer_photo(
+        photo=photo,
+        caption=(
+            f"Привет, {html.bold(message.from_user.full_name)} 🦜!\n\n"
+            "я бот-стилист по погоде 🧸: подсказываю, что надеть на весь день, "
+            "чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. "
+            "Нажми «Совет на сегодня», чтобы узнать, что надеть, "
+            "или введи /help, чтобы увидеть, что я могу)"
+        ),
         reply_markup=main_menu_keyboard(),
     )
 
