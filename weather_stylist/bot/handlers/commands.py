@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 from aiogram import F, Router, html
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.types import (
     Message,
     KeyboardButton,
@@ -127,6 +127,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="Настройки")],
         ],
         resize_keyboard=True,
+        is_persistent=True,
     )
 
 
@@ -367,7 +368,10 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 
 
 # --- обновление фидбека
-@command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
+@command_router.message(
+    StateFilter(FeedbackStates.waiting_for_feedback_then_today),
+    F.text.in_([FB_COLD, FB_OK, FB_HOT])
+)
 async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
     user_tg_id = message.from_user.id
 
@@ -424,12 +428,13 @@ async def handle_daily_feedback(message: Message, state: FSMContext) -> None:
         updated = update_warmth_shift(user, label)
         await user_repo.save(updated)
 
+    # Очищаем состояние перед отправкой ответа, чтобы кнопки главного меню точно показались
+    await state.clear()
+    
     await message.answer(
         reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
         reply_markup=main_menu_keyboard(),
     )
-    
-    await state.clear()
 
     await state.clear()
 

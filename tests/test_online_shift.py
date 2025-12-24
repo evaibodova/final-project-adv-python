@@ -1,5 +1,15 @@
+from dataclasses import dataclass
+
 from weather_stylist.ml.online_shift import update_warmth_shift, ALPHA_BASE
-from tests.conftest import DummyUser
+
+
+@dataclass
+class DummyUser:
+    warmth_shift: float = 0.0
+    feedback_count: int = 0
+    cold_count: int = 0
+    hot_count: int = 0
+    thermo_profile: int = 0
 
 
 def test_update_warmth_shift_cold_feedback():

@@ -7,66 +7,55 @@ from weather_stylist.ml.synthetic_dataset import (
 
 
 def test_rule_based_required_warmth_temperature_ranges():
-    """Тест проверяет правильность расчета базового тепла по температурным диапазонам."""
-    # Очень холодно
+    """проверяет правильность расчета базового тепла по темп диапазонам"""
     assert rule_based_required_warmth(-30, -25, 5, 0, 0) == 25.0
-    # Холодно
     assert rule_based_required_warmth(-20, -15, 5, 0, 0) == 18.0
-    # Прохладно
     assert rule_based_required_warmth(-10, -5, 5, 0, 0) == 13.0
-    # Холодновато
     assert rule_based_required_warmth(0, 3, 5, 0, 0) == 8.0
-    # Прохладно
     assert rule_based_required_warmth(5, 10, 5, 0, 0) == 5.0
-    # Умеренно
     assert rule_based_required_warmth(15, 18, 5, 0, 0) == 3.0
-    # Тепло
     assert rule_based_required_warmth(20, 25, 5, 0, 0) == 1.0
 
 
 def test_rule_based_required_warmth_wind_effect():
-    """Тест проверяет влияние сильного ветра на требуемое тепло."""
-    base = rule_based_required_warmth(10, 15, 5, 0, 0)  # Без ветра
-    with_wind = rule_based_required_warmth(10, 15, 12, 0, 0)  # Сильный ветер >= 10
+    """проверяет влияние сильного ветра на тепло"""
+    base = rule_based_required_warmth(10, 15, 5, 0, 0)
+    with_wind = rule_based_required_warmth(10, 15, 12, 0, 0)
     
     assert with_wind == base + 1.0
 
 
 def test_rule_based_required_warmth_rain_effect():
-    """Тест проверяет влияние дождя на требуемое тепло."""
-    base = rule_based_required_warmth(10, 15, 5, 0, 0)  # Без дождя
-    with_rain = rule_based_required_warmth(10, 15, 5, 1, 0)  # С дождем
+    """проверяет влияние дождя на тепло"""
+    base = rule_based_required_warmth(10, 15, 5, 0, 0)
+    with_rain = rule_based_required_warmth(10, 15, 5, 1, 0)
     
     assert with_rain == base + 1.0
 
 
 def test_rule_based_required_warmth_thermo_profile():
-    """Тест проверяет влияние термопрофиля пользователя."""
-    base = rule_based_required_warmth(10, 15, 5, 0, 0)  # Нейтральный профиль
+    """проверяет влияние термопрофиля пользователя"""
+    base = rule_based_required_warmth(10, 15, 5, 0, 0)  # обычный чел
     
-    cold_profile = rule_based_required_warmth(10, 15, 5, 0, -1)  # Мерзляк
+    cold_profile = rule_based_required_warmth(10, 15, 5, 0, -1)  # мерзляк
     assert cold_profile == base + 1.0
     
-    hot_profile = rule_based_required_warmth(10, 15, 5, 0, 1)  # Жарко переносит
+    hot_profile = rule_based_required_warmth(10, 15, 5, 0, 1)  # климакс чел
     assert hot_profile == base - 1.0
 
 
 def test_rule_based_required_warmth_combined_effects():
-    """Тест проверяет комбинацию всех факторов."""
-    # Холодно + ветер + дождь + мерзляк
+    """проверяет комбинацию всех факторов"""
     result = rule_based_required_warmth(-20, -15, 12, 1, -1)
-    # Базовое тепло для -15°C = 18.0
-    # + ветер (>=10) = +1.0
-    # + дождь = +1.0
-    # + мерзляк = +1.0
+    # тепло для -15°C = 18.0 (+ ветер (>=10) + дождь + мерзляк = +3.0)
     assert result == 21.0
 
 
 def test_random_weather_returns_valid_values():
-    """Тест проверяет, что random_weather возвращает валидные значения."""
+    """проверяет, что random_weather возвращает валидные значения"""
     temp_min, temp_max, wind_max, will_rain = random_weather()
     
-    # Проверяем диапазоны
+    #диапазоны
     assert -30 <= temp_min <= temp_max <= 35
     assert temp_min <= temp_max
     assert 0.0 <= wind_max <= 15.0
@@ -74,34 +63,30 @@ def test_random_weather_returns_valid_values():
 
 
 def test_random_weather_multiple_calls():
-    """Тест проверяет, что функция генерирует разные значения при повторных вызовах."""
+    """проверяет, что функция генерирует разные значения при повторных вызовах"""
     results = [random_weather() for _ in range(10)]
     
-    # Хотя бы некоторые значения должны отличаться (вероятностный тест)
-    # Проверяем, что не все результаты одинаковые
+    # хотяб некоторые значения должны отличаться; проверяем, что не все результаты одинаковые
     unique_results = set(results)
-    assert len(unique_results) > 1, "Функция должна генерировать разные значения"
+    assert len(unique_results) > 1, "функция должна генерировать разные значения"
 
 
 def test_random_thermo_profile_returns_valid_values():
-    """Тест проверяет, что random_thermo_profile возвращает валидные значения."""
+    """проверяет, что random_thermo_profile возвращает валидные значения"""
     profile = random_thermo_profile()
     assert profile in [-1, 0, 1]
 
 
 def test_random_thermo_profile_distribution():
-    """Тест проверяет, что все значения термопрофиля могут быть сгенерированы."""
+    """проверяет, что все значения термопрофиля могут быть сгенерированы"""
     profiles = [random_thermo_profile() for _ in range(30)]
-    
-    # За 30 вызовов должны встретиться все три значения
     unique_profiles = set(profiles)
-    assert len(unique_profiles) == 3, "Должны встречаться все три значения: -1, 0, 1"
+    assert len(unique_profiles) == 3, "должны встречаться все три значения: -1, 0, 1"
 
 
 def test_generate_synthetic_dataset_structure():
-    """Тест проверяет структуру и валидность данных, генерируемых для синтетического датасета."""
-    # Тестируем логику создания строк датасета напрямую
-    # (без файловой системы для изоляции теста)
+    """проверяет структуру и валидность данных, генерируемых для синтетического датасета"""
+    #логика создания строк датасета напрямую (без файловой системы для изоляции теста)
     n_samples = 10
     fieldnames = FEATURE_COLUMNS + ["required_warmth"]
     rows = []
@@ -130,15 +115,12 @@ def test_generate_synthetic_dataset_structure():
         }
         rows.append(row)
     
-    # Проверяем количество строк
     assert len(rows) == n_samples
     
-    # Проверяем структуру каждой строки
     for row in rows:
-        # Проверяем наличие всех полей
         assert set(row.keys()) == set(fieldnames)
         
-        # Проверяем валидность данных
+        #валидность данных
         assert float(row["temp_min"]) <= float(row["temp_max"])
         assert -30 <= float(row["temp_min"]) <= 35
         assert -20 <= float(row["temp_max"]) <= 35
@@ -148,7 +130,7 @@ def test_generate_synthetic_dataset_structure():
         assert float(row["warmth_shift"]) == 0.0
         assert float(row["required_warmth"]) > 0
         
-        # Проверяем, что required_warmth соответствует правилам
+        #required_warmth соответствует правилам
         calculated = rule_based_required_warmth(
             temp_min=float(row["temp_min"]),
             temp_max=float(row["temp_max"]),
