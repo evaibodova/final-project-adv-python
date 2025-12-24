@@ -12,15 +12,14 @@ from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUser
 
 logger = logging.getLogger(__name__)
 
-# пороги резкой смены
-TEMP_JUMP = 7.0      # градусов разница по максимуму
-STRONG_WIND = 12.0   # м/с
+
+TEMP_JUMP = 7.0      
+STRONG_WIND = 12.0   
 
 
 async def check_user_weather_change(bot: Bot, user: User) -> None:
     """
-    Проверяем, нет ли для пользователя резкой смены погоды.
-    Если есть — шлём одно рандомное сообщение.
+    Проверяем, нет ли смены погоды
     """
     city = user.city
 
@@ -42,7 +41,6 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
     msgs: list[str] = []
 
     for h in today.hourly:
-        # h.hour – час по локальному времени
         if h.hour <= current_hour:
             continue
         if h.hour > current_hour + 12:
@@ -79,7 +77,7 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
     # сильный ветер
     if tomorrow.wind_max >= STRONG_WIND and today.wind_max < STRONG_WIND:
         msgs.append(
-            f"завтра в {city} обещают сильный ветер до {round(tomorrow.wind_max)} м/с 🌬️\n"
+            f"завтра в {city} обещают сильный ветер до {round(tomorrow.wind_max)} м/с \n"
             f"лучше взять что-нибудь с капюшоном и не брать зонт-трость."
         )
 
@@ -99,8 +97,8 @@ async def check_user_weather_change(bot: Bot, user: User) -> None:
 
 async def run_weather_alerts_loop(bot: Bot, interval_hours: int = 12) -> None:
     """
-    Фоновый цикл: раз в interval_hours часов пробегаемся по всем пользователям,
-    проверяем погоду и при необходимости шлём уведомления.
+    Раз в несколько часов пробегаемся по всем пользователям,
+    проверяем погоду и при необходимости шлём уведомления
     """
     while True:
         try:

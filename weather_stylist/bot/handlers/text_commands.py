@@ -3,8 +3,6 @@ from aiogram.types import Message
 
 text_router = Router()
 
-# --- константы ---
-
 KNOWN_TEXT_BUTTONS: set[str] = {
     "Совет на сегодня",
     "Изменить город",
@@ -41,7 +39,6 @@ async def handle_unknown_text(message: Message) -> None:
         return
 
     if text.startswith("/"):
-        # неизвестная команда
         await message.answer(UNKNOWN_TEXT_MSG)
         return
 
