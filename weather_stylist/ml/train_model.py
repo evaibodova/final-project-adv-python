@@ -31,7 +31,7 @@ def main() -> None:
 
     model = RandomForestRegressor(
         n_estimators=200,
-        max_depth=5,
+        max_depth=6,
         random_state=42,
     )
 

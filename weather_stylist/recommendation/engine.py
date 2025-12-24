@@ -4,6 +4,7 @@ from typing import List, Dict
 
 from weather_stylist.ml.features import make_features
 from weather_stylist.ml.model_loader import get_regressor
+from weather_stylist.ml.model_loader import get_regressor, try_get_delta_regressor
 from weather_stylist.models.user import User
 from weather_stylist.models.weather import DayForecast
 from weather_stylist.models.outfit import Outfit, OutfitAdvice
@@ -27,8 +28,7 @@ MID_TOPS: List[ClothingItem] = [it for it in MID_ITEMS if it.warmth > 1.4]
 
 class _NoneMid:
     """
-    Заглушка "нет среднего слоя".
-    Не лежит в ITEMS, просто объект с нужными полями.
+    нет среднего слоя
     """
     code = "none_mid"
     title = ""
@@ -40,6 +40,30 @@ class _NoneMid:
 
 
 NONE_MID_ITEM = _NoneMid()
+
+
+class _NoneBottom:
+    """
+    нет отдельного низа
+    """
+    code = "none_bottom"
+    title = ""
+    category = "bottom"
+    warmth = 0.0
+    rain_protect = False
+    wind_protect = False
+    style_tags = set()
+
+
+NONE_BOTTOM_ITEM = _NoneBottom()
+
+
+def _is_dress(item) -> bool:
+    """
+    Платье ли это
+    """
+    code = getattr(item, "code", "")
+    return code.startswith("dress_")
 
 
 def required_warmth_ml(forecast: DayForecast, user: User) -> float:
@@ -54,14 +78,13 @@ def required_warmth_ml(forecast: DayForecast, user: User) -> float:
 
 def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
     """
-    Базовое rule-based правило "сколько тепла нужно".
-    (по сути, та же логика, что и при генерации synthetic_feedback)
+    База: температура + ветер + дождь + thermo_profile + персональный shift
     """
     t = forecast.max_temp
-    base = 0.0
+
     if t <= -25:
         base = 25.0
-    if t <= -15:
+    elif t <= -15:
         base = 18.0
     elif t <= -5:
         base = 13.0
@@ -74,25 +97,49 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
     else:
         base = 1.0
 
+    if forecast.wind_max >= 10.0:
+        base += 1.0
+    if bool(forecast.will_rain):
+        base += 1.0
+
+    if user.thermo_profile == -1:
+        base += 1.0
+    elif user.thermo_profile == 1:
+        base -= 1.0
+
     return base + user.warmth_shift
 
 
 def required_warmth(forecast: DayForecast, user: User) -> float:
-    """
-    - если фидбека ещё нет - rule_based
-    - если фидбек уже есть - rule_based и ML
-    """
     base = required_warmth_rule_based(forecast, user)
 
     if user.feedback_count <= 0:
-        return base
-    ml_pred = required_warmth_ml(forecast, user)
-    raw = user.feedback_count / 10
-    cf = min(0.7, max(0.1, raw))
-    return (1 - cf) * base + cf * ml_pred
+        target = base
+    else:
+        ml_pred = required_warmth_ml(forecast, user)
+        raw = user.feedback_count / 10
+        cf = min(0.7, max(0.1, raw))
+        target = (1 - cf) * base + cf * ml_pred
+
+    # delta по фидбекам
+    delta_reg = try_get_delta_regressor()
+    if delta_reg is not None and user.feedback_count >= 5:
+        x = make_features(forecast, user)
+        delta = float(delta_reg.predict([x])[0])
+
+        # защита от бреда
+        if delta > 2.0:
+            delta = 2.0
+        elif delta < -2.0:
+            delta = -2.0
+
+        dcf = min(0.6, max(0.1, user.feedback_count / 50))
+        target = target + dcf * delta
+
+    return target
 
 
-# ---- подбор комплекта по целевому тепло-индексу ----
+# подбор комплекта по целевому тепло-индексу
 
 def is_valid_combo(
         forecast: DayForecast,
@@ -114,6 +161,14 @@ def is_valid_combo(
     # при сильном морозе нужна серьёзная верхняя одежда
     if t_min < -10 and outer.warmth < 3.5:  # типа пуховик/очень тёплое пальто
         return False
+
+    is_dress_combo = _is_dress(base) or _is_dress(mid)
+
+    if not is_dress_combo:
+        if t_min < 5 and bottom.warmth < 1.0:
+            return False
+        if t_min < -5 and bottom.warmth < 1.5:
+            return False
 
     # совсем лёгкий низ в холод
     if t_min < 5 and bottom.warmth < 1.0:
@@ -222,7 +277,6 @@ def pick_outfit_by_index(
     outers = OUTER_ITEMS or []
 
     if not bottoms or not base_tops or not outers:
-        # совсем грустный фоллбек
         return Outfit(
             bottom="",
             base="",
@@ -236,9 +290,13 @@ def pick_outfit_by_index(
 
     mid_candidates: List[ClothingItem] = [NONE_MID_ITEM] + mid_tops
 
-    for bottom in bottoms:
-        for base in base_tops:
-            for mid in mid_candidates:
+    for base in base_tops:
+        for mid in mid_candidates:
+            is_dress_combo = _is_dress(base) or _is_dress(mid)
+            candidate_bottoms = [
+                NONE_BOTTOM_ITEM] if is_dress_combo else bottoms
+
+            for bottom in candidate_bottoms:
                 for outer in outers:
                     if not is_valid_combo(forecast, bottom, base, mid, outer):
                         continue
@@ -265,6 +323,8 @@ def pick_outfit_by_index(
         bottom_code, base_code, mid_code, outer_code = best_combo
         if mid_code == NONE_MID_ITEM.code:
             mid_code = ""
+        if bottom_code == NONE_BOTTOM_ITEM.code:
+            bottom_code = ""
 
     accessories_codes = _pick_accessories(forecast)
 

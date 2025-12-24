@@ -207,14 +207,14 @@ ITEMS: List[ClothingItem] = [
     ),
     ClothingItem(
         code="dress_cotton_midi",
-        title="хлопковое платье миди",
+        title="хлопковое платье миди и копроновые колготки",
         category="mid",
         warmth=1.4,
         style_tags={"casual"},
     ),
     ClothingItem(
         code="dress_wool_midi",
-        title="тёплое вязаное платье",
+        title="тёплое вязаное платье и тёплые колготки",
         category="mid",
         warmth=2.2,
         style_tags={"casual", "office"},
