@@ -157,7 +157,6 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
             reply_markup=feedback_keyboard(),
         )
 
-    # 1. если пользователя нет в БД — сначала спрашиваем термочувствительность
     if user is None:
         await state.update_data(expect_city_after_thermo=True)
         await message.answer(
@@ -169,7 +168,6 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     city = user.city
 
-    # 2. пользователь есть, но города ещё нет — просим город
     if not city:
         await message.answer(
             "давай выберем город по умолчанию 🌍\n"
@@ -178,11 +176,8 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         await state.set_state(CityStates.choosing_default)
         return
 
-    # 3. и термопрофиль, и город уже есть — даём совет
-        # город уже известен
     forecast = await get_forecast_for_city(city)
 
-    # вызываем наш engine, который уже учитывает термопрофиль и фидбеки
     advice = build_today_advice(forecast, user)
 
     footer = (
