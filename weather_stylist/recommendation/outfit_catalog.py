@@ -9,7 +9,7 @@ class ClothingItem:
     code: str
     title: str
     category: Category
-    warmth: float
+    warmth: float # вклад в тепло-индекс
     rain_protect: bool = False
     wind_protect: bool = False
     style_tags: Set[str] = field(default_factory=set)  # {"casual", "office", "sport"}

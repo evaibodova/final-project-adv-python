@@ -20,7 +20,7 @@ def make_features(forecast: Any, user: Any) -> List[float]:
     forecast.wind_max: float
     forecast.will_rain: bool/int
     user.thermo_profile: int  (-1 / 0 / +1)
-    user.warmth_shift: float
+    user.warmth_shift: float - персонально под пользователя
     """
     temp_min = float(getattr(forecast, "min_temp"))
     temp_max = float(getattr(forecast, "max_temp"))

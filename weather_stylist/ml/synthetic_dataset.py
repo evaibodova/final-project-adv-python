@@ -12,12 +12,11 @@ def rule_based_required_warmth(
         will_rain: int,
         thermo_profile: int,
 ) -> float:
-
     t = temp_max
     base = 0.0
     if t <= -25:
         base = 25.0
-    if t <= -15:
+    elif t <= -15:
         base = 18.0
     elif t <= -5:
         base = 13.0
