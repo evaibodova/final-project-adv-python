@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import List, Dict
 
 from weather_stylist.ml.features import make_features
-from weather_stylist.ml.model_loader import get_regressor
 from weather_stylist.ml.model_loader import get_regressor, try_get_delta_regressor
 from weather_stylist.models.user import User
 from weather_stylist.models.weather import DayForecast
@@ -80,8 +79,10 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
     """
     База: температура + ветер + дождь + thermo_profile + персональный shift
     """
-    t = forecast.max_temp
-
+    t = float(getattr(forecast, "max_temp", 0.0))
+    wind_max = float(getattr(forecast, "wind_max", 0.0))
+    will_rain = 1 if bool(getattr(forecast, "will_rain", 0)) else 0
+    thermo_profile = int(getattr(user, "thermo_profile", 0))
     if t <= -25:
         base = 25.0
     elif t <= -15:
@@ -106,16 +107,18 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
         base += 1.0
     elif user.thermo_profile == 1:
         base -= 1.0
-
-    return base + user.warmth_shift
+    # мерзляк / нет
+    base += float(thermo_profile)
+    # персональный сдвиг
+    base += float(getattr(user, "warmth_shift", 0.0))
+    return base
 
 
 def required_warmth(forecast: DayForecast, user: User) -> float:
     base = required_warmth_rule_based(forecast, user)
+    target = base
 
-    if user.feedback_count <= 0:
-        target = base
-    else:
+    if getattr(user, "feedback_count", 0) > 0:
         ml_pred = required_warmth_ml(forecast, user)
         raw = user.feedback_count / 10
         cf = min(0.7, max(0.1, raw))
@@ -123,20 +126,18 @@ def required_warmth(forecast: DayForecast, user: User) -> float:
 
     # delta по фидбекам
     delta_reg = try_get_delta_regressor()
-    if delta_reg is not None and user.feedback_count >= 5:
+    if delta_reg is not None and getattr(user, "feedback_count", 0) >= 5:
         x = make_features(forecast, user)
         delta = float(delta_reg.predict([x])[0])
-
-        # защита от бреда
         if delta > 2.0:
             delta = 2.0
         elif delta < -2.0:
             delta = -2.0
-
+        raw = float(getattr(user, "feedback_count", 0)) / 50.0
         dcf = min(0.6, max(0.1, user.feedback_count / 50))
         target = target + dcf * delta
 
-    return target
+    return float(target)
 
 
 # подбор комплекта по целевому тепло-индексу
