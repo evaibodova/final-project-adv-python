@@ -116,7 +116,7 @@ def style_choice_keyboard() -> ReplyKeyboardMarkup:
 async def cmd_start(message: Message) -> None:
     await message.answer(
         f"Привет, {html.bold(message.from_user.full_name)}!\n\n"
-        "я бот-стилист по погоде: подсказываю, что надеть на весь день 🌦🧥. Нажми Прогноз на сегодня, чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
+        "я бот-стилист по погоде: подсказываю, что надеть на весь день, чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. Нажми «Совет на сегодня», чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -131,7 +131,7 @@ async def cmd_help(message: Message) -> None:
         "/today – совет на сегодня\n"
         "/change_city – сменить город\n"
         "/settings – настройки профиля\n"
-        "или пользуйся кнопками внизу 👍",
+        "или пользуйся кнопками внизу ⬇️",
     )
 
 
@@ -148,7 +148,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     if user is not None:
         await message.answer(
-            "А как тебе был прошлый образ? 🧥\n"
+            "А как тебе был прошлый образ?\n"
             "Было холодно, жарко или нормально?",
             reply_markup=feedback_keyboard(),
         )
@@ -157,8 +157,8 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     if user is None:
         await state.update_data(expect_city_after_thermo=True)
         await message.answer(
-            "давай познакомимся 🧊🔥\n"
-            "как ты обычно ощущаешь погоду?",
+            "давай познакомимся! \n"
+            "как ты обычно ощущаешь погоду? 🧊🔥",
             reply_markup=thermo_choice_keyboard(),
         )
         return
@@ -203,7 +203,7 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
         forecast = await get_forecast_for_city(raw_city)
     except Exception:
         await message.answer(
-            "не смогла найти такой город 😿\n"
+            "не смог найти такой город 😿\n"
             "попробуй ещё раз, например: Омск или Prague."
         )
         return
@@ -250,8 +250,8 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
     if return_to_style:
         await state.update_data(city=forecast.city, return_to_style=False)
         await message.answer(
-            f"ок, буду использовать {forecast.city} как город по умолчанию 💾\n\n"
-            "теперь выбери стиль одежды 👔",
+            f"ок, буду использовать {forecast.city} как город по умолчанию \n\n"
+            "теперь выбери стиль одежды, если хочешь посмотреть аутфиты для твоей погоды 👔",
             reply_markup=style_choice_keyboard(),
         )
         await state.set_state(StyleStates.choosing_style)
@@ -294,20 +294,20 @@ async def handle_daily_feedback(message: Message) -> None:
         text = (message.text or "").strip()
         if text == FB_COLD:
             label = -1
-            reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать теплее."
+            reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать одежду потеплее."
         elif text == FB_HOT:
             label = 1
-            reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать полегче."
+            reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать одежду полегче."
         else:
             label = 0
-            reply = "класс, значит в прошлый раз было примерно нормально 😌"
+            reply = "круто, значит продолжаем в том же духе, буду советовать одежду среднего теплоощущения 😌"
 
         # тут обновляется: feedback_count, cold/hot_count, warmth_shift
         updated = update_warmth_shift(user, label)
         await user_repo.save(updated)
 
     await message.answer(
-        reply + "\n\nспасибо за обратную связь! ❤️",
+        reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -337,7 +337,7 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
         forecast = await get_forecast_for_city(raw_city)
     except Exception:
         await message.answer(
-            "я не нашла такой город 😢\n"
+            "я не нашел такой город 😢\n"
             "проверь написание и попробуй снова.\n"
             "если это очень маленький населённый пункт, "
             "попробуй ближайший крупный город."
@@ -381,7 +381,7 @@ async def process_change_city(message: Message, state: FSMContext) -> None:
     await state.clear()
 
     await message.answer(
-        f"обновила город по умолчанию на {forecast.city} ✅\n"
+        f"обновил город по умолчанию на {forecast.city} ✅\n"
         "теперь «Совет на сегодня» будет использовать этот город."
     )
 
@@ -430,13 +430,13 @@ async def handle_thermo_choice(message: Message, state: FSMContext) -> None:
 
     if text == TEXT_COLD:
         value = -1
-        desc = "запомнила: ты мерзляк 🧊 — буду советовать теплее."
+        desc = "запомнил: ты мерзляк 🧊 — буду советовать теплее."
     elif text == TEXT_HOT:
         value = 1
-        desc = "запомнила: тебе всегда жарко 🔥 — буду советовать полегче."
+        desc = "запомнил: тебе всегда жарко 🔥 — буду советовать полегче."
     else:
         value = 0
-        desc = "запомнила: без особых предпочтений 😌 — буду советовать что-то среднее."
+        desc = "запомнил: без особых предпочтений 😌 — буду советовать что-то среднее."
 
     data = await state.get_data()
     expect_city = data.get("expect_city_after_thermo", False)
