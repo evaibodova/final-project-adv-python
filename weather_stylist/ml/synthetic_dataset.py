@@ -15,26 +15,28 @@ def rule_based_required_warmth(
 
     t = temp_max
     base = 0.0
+    if t <= -25:
+        base = 20.0
     if t <= -15:
-        base = 7.0
+        base = 15.0
     elif t <= -5:
-        base = 6.0
+        base = 11.0
     elif t <= 3:
-        base = 5.0
+        base = 7.0
     elif t <= 10:
-        base = 4.0
+        base = 6.0
     elif t <= 18:
-        base = 3.0
+        base = 4.0
     else:
         base = 2.0
     if wind_max >= 10.0:
-        base += 0.5
+        base += 1.0
     if will_rain == 1:
-        base += 0.5
+        base += 1.0
     if thermo_profile == -1:
-        base += 0.5
+        base += 1.0
     elif thermo_profile == 1:
-        base -= 0.5
+        base -= 1.0
 
     return base
 
