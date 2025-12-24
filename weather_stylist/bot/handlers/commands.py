@@ -119,6 +119,7 @@ def style_choice_keyboard() -> ReplyKeyboardMarkup:
 @command_router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     await message.answer(
+        photo="mishka_popug.png"
         f"Привет, {html.bold(message.from_user.full_name)} 🦜!\n\n"
         "я бот-стилист по погоде 🧸: подсказываю, что надеть на весь день, чтобы внезапно не оказаться мокрым или ледяным посреди дня 🌦🥶. Нажми «Совет на сегодня», чтобы узнать, что надеть или введи /help чтобы увидеть, что я могу)",
         reply_markup=main_menu_keyboard(),
