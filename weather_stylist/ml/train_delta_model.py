@@ -12,12 +12,11 @@ from sqlalchemy import select
 from weather_stylist.adapters.user_bd.bd import engine, FeedbackORM, UserORM
 from weather_stylist.ml.features import FEATURE_COLUMNS
 
-K = 1.0  # насколько “сильный” один фидбек
-MIN_ROWS = 30  # меньше — смысла мало
+K = 1.0
+MIN_ROWS = 30
 
 
 def main() -> None:
-    # вытаскиваем погоду + label + текущий warmth_shift пользователя
     stmt = (
         select(
             FeedbackORM.temp_min,
@@ -37,7 +36,6 @@ def main() -> None:
         raise RuntimeError(
             f"not enough real feedback rows: {len(df)} < {MIN_ROWS}")
 
-    # will_rain -> 0/1
     df["will_rain"] = df["will_rain"].astype(int)
 
     df["delta"] = (-df["label"].clip(-1, 1)) * K

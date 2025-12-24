@@ -107,9 +107,9 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
         base += 1.0
     elif user.thermo_profile == 1:
         base -= 1.0
-    # мерзляк / нет
+
     base += float(thermo_profile)
-    # персональный сдвиг
+
     base += float(getattr(user, "warmth_shift", 0.0))
     return base
 
@@ -124,7 +124,6 @@ def required_warmth(forecast: DayForecast, user: User) -> float:
         cf = min(0.7, max(0.1, raw))
         target = (1 - cf) * base + cf * ml_pred
 
-    # delta по фидбекам
     delta_reg = try_get_delta_regressor()
     if delta_reg is not None and getattr(user, "feedback_count", 0) >= 5:
         x = make_features(forecast, user)
@@ -140,8 +139,6 @@ def required_warmth(forecast: DayForecast, user: User) -> float:
     return float(target)
 
 
-# подбор комплекта по целевому тепло-индексу
-
 def is_valid_combo(
         forecast: DayForecast,
         bottom: ClothingItem,
@@ -150,17 +147,15 @@ def is_valid_combo(
         outer: ClothingItem,
 ) -> bool:
     """
-    Доменные ограничения, чтобы не было совсем странных луков.
-    Смотрим в первую очередь на min_temp и "теплоту" вещей.
+    Доменные ограничения, чтобы не было совсем странных образов.
+    Смотрим в первую очередь на min_temp и теплоту вещей.
     """
     t_min = forecast.min_temp
 
-    # без верхней одежды при минусе — нельзя
     if t_min < 0 and outer.warmth < 0.5:
         return False
 
-    # при сильном морозе нужна серьёзная верхняя одежда
-    if t_min < -10 and outer.warmth < 3.5:  # типа пуховик/очень тёплое пальто
+    if t_min < -10 and outer.warmth < 3.5:
         return False
 
     is_dress_combo = _is_dress(base) or _is_dress(mid)
@@ -171,13 +166,11 @@ def is_valid_combo(
         if t_min < -5 and bottom.warmth < 1.5:
             return False
 
-    # совсем лёгкий низ в холод
     if t_min < 5 and bottom.warmth < 1.0:
         return False
     if t_min < -5 and bottom.warmth < 1.5:
         return False
 
-    # если очень холодно, а слоёв мало
     if t_min < -15 and (mid.warmth + outer.warmth) < 4.0:
         return False
 
@@ -230,8 +223,6 @@ def _pick_accessories(forecast: DayForecast) -> List[str]:
     result: List[str] = []
 
     t_min = forecast.min_temp
-
-    # холодно → берём самые тёплые аксессуары
     if t_min <= 0:
         warm_acc = sorted(
             ACCESSORY_ITEMS, key=lambda a: a.warmth, reverse=True
@@ -239,19 +230,15 @@ def _pick_accessories(forecast: DayForecast) -> List[str]:
         for item in warm_acc[:2]:
             result.append(item.code)
 
-    # дождь → если ни верх, ни аксессуаров с rain_protect нет,
-    # добавим хоть что-то дождезащитное
     if forecast.will_rain:
         rain_acc = [a for a in ACCESSORY_ITEMS if a.rain_protect]
         if rain_acc:
             result.append(rain_acc[0].code)
 
-    # обувь
     shoes_code = _pick_shoes(forecast)
     if shoes_code is not None:
         result.append(shoes_code)
 
-    # уникализируем
     seen: set[str] = set()
     unique: List[str] = []
     for code in result:
@@ -271,7 +258,6 @@ def pick_outfit_by_index(
     Перебираем разумные комбинации (низ + базовый верх + средний слой + верхняя одежда),
     ищем ту, у которой суммарный warmth ближе всего к target_warmth.
     """
-    # если вдруг нет разбиения — фоллбек
     base_tops = BASE_TOPS or MID_ITEMS or []
     mid_tops = MID_TOPS or []
     bottoms = BOTTOM_ITEMS or []
@@ -315,7 +301,6 @@ def pick_outfit_by_index(
                         )
 
     if best_combo is None:
-        # фоллбек на первые попавшиеся вещи
         bottom_code = bottoms[0].code
         base_code = base_tops[0].code
         outer_code = outers[0].code
@@ -338,8 +323,6 @@ def pick_outfit_by_index(
     )
 
 
-# ---- сборка текста для пользователя ----
-
 def render_outfit_text(
         forecast: DayForecast,
         user: User,
@@ -354,13 +337,11 @@ def render_outfit_text(
         if item and item.title:
             parts.append(item.title)
 
-    # низ + верх (база + слой) + верхняя одежда
     add_title(getattr(outfit, "bottom", ""))
     add_title(getattr(outfit, "base", ""))
     add_title(getattr(outfit, "mid", ""))
     add_title(getattr(outfit, "outer", ""))
 
-    # аксессуары + обувь
     for code in getattr(outfit, "accessories", []):
         add_title(code)
 
