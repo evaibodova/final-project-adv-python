@@ -24,8 +24,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     filename="bot.log",
     filemode="a",
+    force=True,
 )
 logger = logging.getLogger(__name__)
+logger.debug("BOOT: starting bot process")
 
 
 bot = Bot(token=BOT_TOKEN,
