@@ -218,41 +218,39 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
     async with user_repo_ctx() as user_repo:
         user = await user_repo.get_user_by_tg_id(user_tg_id)
 
-    if user is not None:
-        await message.answer(
-            "А как тебе был прошлый образ?\n"
-            "Было холодно, жарко или нормально?",
-            reply_markup=feedback_keyboard(),
-        )
-
     if user is None:
-        ...
+        await message.answer(
+            "давай сначала настроимся 🙂\n"
+            "нажми «Настройки» и выбери термопрофиль, а потом город."
+        )
         return
 
     city = user.city
-
     if not city:
-        ...
+        await message.answer(
+            f"давай сначала выберем город по умолчанию 🌍\n"
+            f"напиши город (например: {DEFAULT_CITY})."
+        )
+        await state.set_state(CityStates.choosing_default)
         return
 
-    # 3. город и профиль есть — даём совет
+    # --- прогноз
     try:
         forecast = await get_forecast_for_city(city)
     except CityNotFoundError:
-        # до этого город был валидным, но вдруг API больше его не знает
         await reply_city_not_found(message)
         return
     except WeatherAPIError:
         await reply_weather_unavailable(message)
         return
 
+    # --- совет
     try:
         advice = build_today_advice(forecast, user)
     except ModelNotReadyError:
         await reply_model_not_ready(message)
         return
     except ModelError:
-        # что-то сломалось в ML, но не критично — просто скажем, что не можем
         await message.answer(
             "у меня сейчас не получается подобрать персональный образ 🧵\n"
             "попробуй ещё раз немного позже.",
@@ -262,7 +260,7 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
 
     footer = (
         f"\n\nсейчас у тебя город по умолчанию: {forecast.city}.\n"
-        "если хочешь сменить — нажми «Сменить город» или команду /change_city."
+        "если хочешь сменить — нажми «Изменить город» или команду /change_city."
     )
 
     await message.answer(
@@ -270,16 +268,31 @@ async def cmd_today(message: Message, state: FSMContext) -> None:
         reply_markup=main_menu_keyboard(),
     )
 
+    outfit_codes: list[str] = []
+    # базовые части
+    for attr in ("bottom", "base", "mid", "outer"):
+        code = getattr(advice.outfit, attr, None)
+        if code:
+            outfit_codes.append(str(code))
+    # аксессуары
+    for code in (getattr(advice.outfit, "accessories", None) or []):
+        outfit_codes.append(str(code))
+
     await state.update_data(
         last_forecast={
-            "temp_min": forecast.min_temp,
-            "temp_max": forecast.max_temp,
-            "wind_max": forecast.wind_max,
-            "will_rain": forecast.will_rain,
+            "temp_min": float(forecast.min_temp),
+            "temp_max": float(forecast.max_temp),
+            "wind_max": float(forecast.wind_max),
+            "will_rain": bool(forecast.will_rain),
         },
-        last_outfit_code=",".join(advice.items),
+        last_outfit_code=",".join(outfit_codes),
     )
     await state.set_state(FeedbackStates.waiting_for_feedback_then_today)
+
+    await message.answer(
+        "а как тебе образ? было холодно, нормально или жарко?",
+        reply_markup=feedback_keyboard(),
+    )
 
 # --- первый выбор города ---
 
