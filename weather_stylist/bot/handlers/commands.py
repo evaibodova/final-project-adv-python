@@ -14,6 +14,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from weather_stylist.adapters.user_bd.bd import AsyncSessionLocal
+from weather_stylist.adapters.user_bd.bd import SessionLocal
+from weather_stylist.adapters.user_bd.bd import UserORM, FeedbackORM
+from datetime import datetime
 from weather_stylist.adapters.user_bd.sqlalchemy_user_repo import SqlAlchemyUserRepo
 from weather_stylist.models import User
 
@@ -280,35 +283,68 @@ async def process_first_city(message: Message, state: FSMContext) -> None:
 @command_router.message(F.text.in_([FB_COLD, FB_OK, FB_HOT]))
 async def handle_daily_feedback(message: Message) -> None:
     user_tg_id = message.from_user.id
+    text = (message.text or "").strip()
 
-    async with user_repo_ctx() as user_repo:
-        user = await user_repo.get_user_by_tg_id(user_tg_id)
+    # 1. Разбираем текст фидбека -> label
+    if text == FB_COLD:
+        label = -1
+        reply = (
+            "поняла: в прошлый раз было холодно ❄️\n"
+            "буду советовать одежду потеплее."
+        )
+    elif text == FB_HOT:
+        label = 1
+        reply = (
+            "поняла: в прошлый раз было жарко 🔥\n"
+            "буду советовать одежду полегче."
+        )
+    else:
+        label = 0
+        reply = (
+            "круто, значит продолжаем в том же духе, "
+            "буду советовать одежду среднего теплоощущения 😌"
+        )
+
+    # Работаем с БД через обычный SessionLocal (синхронно)
+    with SessionLocal() as session:
+        user = session.query(UserORM).filter_by(tg_id=user_tg_id).first()
 
         if user is None:
             await message.answer(
                 "я ещё ни разу не давала тебе совет по одежде, "
-                "так что пока нечего оценивать 🥺"
+                "так что пока нечего оценивать 🥺",
+                reply_markup=main_menu_keyboard(),
             )
             return
 
-        text = (message.text or "").strip()
-        if text == FB_COLD:
-            label = -1
-            reply = "поняла: в прошлый раз было холодно ❄️\nбуду советовать одежду потеплее."
-        elif text == FB_HOT:
-            label = 1
-            reply = "поняла: в прошлый раз было жарко 🔥\nбуду советовать одежду полегче."
-        else:
-            label = 0
-            reply = "круто, значит продолжаем в том же духе, буду советовать одежду среднего теплоощущения 😌"
+        # создаём запись фидбека (пока с заглушками по погоде/луку)
+        fb = FeedbackORM(
+            user_tg_id=user_tg_id,
+            created_at=datetime.utcnow(),
+            temp_min=0.0,
+            temp_max=0.0,
+            wind_max=0.0,
+            will_rain=False,
+            thermo_profile=user.thermo_profile,
+            outfit_code="unknown",
+            label=label,
+        )
+        session.add(fb)
 
-        
-        # тут обновляется: feedback_count, cold/hot_count, warmth_shift
-        updated = update_warmth_shift(user, label)
-        await user_repo.save(updated)
+        # обновляем счётчики у пользователя
+        user.feedback_count = (user.feedback_count or 0) + 1
+        if label == -1:
+            user.cold_count = (user.cold_count or 0) + 1
+        elif label == 1:
+            user.hot_count = (user.hot_count or 0) + 1
 
+        session.commit()
+
+    #  Отвечаем пользователю и возвращаем главное меню
     await message.answer(
-        reply + "\n\nспасибо за обратную связь! ❤️ \n мы стараемся сделать работу лучше, ты очень помогаешь нам в этом 💗",
+        reply
+        + "\n\nспасибо за обратную связь! ❤️\n"
+          "ты очень помогаешь мне лучше подбирать образы 💗",
         reply_markup=main_menu_keyboard(),
     )
 
