@@ -107,9 +107,6 @@ def required_warmth_rule_based(forecast: DayForecast, user: User) -> float:
         base += 1.0
     elif user.thermo_profile == 1:
         base -= 1.0
-
-    base += float(thermo_profile)
-
     base += float(getattr(user, "warmth_shift", 0.0))
     return base
 
@@ -165,11 +162,6 @@ def is_valid_combo(
             return False
         if t_min < -5 and bottom.warmth < 1.5:
             return False
-
-    if t_min < 5 and bottom.warmth < 1.0:
-        return False
-    if t_min < -5 and bottom.warmth < 1.5:
-        return False
 
     if t_min < -15 and (mid.warmth + outer.warmth) < 4.0:
         return False
